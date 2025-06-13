@@ -1,4 +1,5 @@
 import { pgTable, text, serial, integer, timestamp } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -20,7 +21,7 @@ export const permitPackages = pgTable("permit_packages", {
 
 export const packageDocuments = pgTable("package_documents", {
   id: serial("id").primaryKey(),
-  packageId: integer("package_id").notNull(),
+  packageId: integer("package_id").notNull().references(() => permitPackages.id, { onDelete: "cascade" }),
   documentName: text("document_name").notNull(),
   isRequired: integer("is_required").notNull().default(1), // 1 for true, 0 for false (SQLite compatibility)
   isCompleted: integer("is_completed").notNull().default(0), // 1 for true, 0 for false
@@ -29,6 +30,18 @@ export const packageDocuments = pgTable("package_documents", {
   uploadedAt: timestamp("uploaded_at"),
   notes: text("notes"),
 });
+
+// Relations
+export const permitPackagesRelations = relations(permitPackages, ({ many }) => ({
+  documents: many(packageDocuments),
+}));
+
+export const packageDocumentsRelations = relations(packageDocuments, ({ one }) => ({
+  package: one(permitPackages, {
+    fields: [packageDocuments.packageId],
+    references: [permitPackages.id],
+  }),
+}));
 
 // Permit package schemas
 export const insertPermitPackageSchema = createInsertSchema(permitPackages).omit({
