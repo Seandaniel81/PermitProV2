@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Header } from "@/components/layout/header";
 import { DocumentChecklist } from "@/components/document-checklist";
+import { PackageStatusUpdater } from "@/components/package-status-updater";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { PackageWithDocuments } from "@/lib/types";
@@ -233,7 +234,7 @@ export default function PackageDetail() {
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Package Details */}
             <Card>
               <CardHeader>
@@ -279,6 +280,16 @@ export default function PackageDetail() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Status Management */}
+            <div>
+              <PackageStatusUpdater
+                packageId={pkg.id}
+                currentStatus={pkg.status}
+                completedDocuments={pkg.completedDocuments}
+                totalDocuments={pkg.totalDocuments}
+              />
+            </div>
 
             {/* Document Checklist */}
             <div>

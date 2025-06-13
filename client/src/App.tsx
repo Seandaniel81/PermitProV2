@@ -7,6 +7,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import Dashboard from "@/pages/dashboard";
 import NewPackage from "@/pages/new-package";
 import PackageDetail from "@/pages/package-detail";
+import PackageEdit from "@/pages/package-edit";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -15,6 +16,7 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/new-package" component={NewPackage} />
       <Route path="/package/:id" component={PackageDetail} />
+      <Route path="/package/:id/edit" component={PackageEdit} />
       <Route component={NotFound} />
     </Switch>
   );

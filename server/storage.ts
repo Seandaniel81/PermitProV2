@@ -117,7 +117,15 @@ export class MemStorage implements IStorage {
     const now = new Date();
     const pkg: PermitPackage = {
       id,
-      ...packageData,
+      projectName: packageData.projectName,
+      address: packageData.address,
+      permitType: packageData.permitType,
+      status: packageData.status || 'draft',
+      description: packageData.description || null,
+      clientName: packageData.clientName || null,
+      clientEmail: packageData.clientEmail || null,
+      clientPhone: packageData.clientPhone || null,
+      estimatedValue: packageData.estimatedValue || null,
       createdAt: now,
       updatedAt: now,
       submittedAt: packageData.status === PACKAGE_STATUSES.SUBMITTED ? now : null,
@@ -130,8 +138,14 @@ export class MemStorage implements IStorage {
     const id = this.currentDocumentId++;
     const doc: PackageDocument = {
       id,
-      ...documentData,
+      packageId: documentData.packageId,
+      documentName: documentData.documentName,
+      isRequired: documentData.isRequired || 0,
+      isCompleted: documentData.isCompleted || 0,
+      fileName: documentData.fileName || null,
+      fileSize: documentData.fileSize || null,
       uploadedAt: documentData.isCompleted ? new Date() : null,
+      notes: documentData.notes || null,
     };
     this.documents.set(id, doc);
     return doc;
