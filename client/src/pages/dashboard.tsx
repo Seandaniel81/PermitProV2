@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Header } from "@/components/layout/header";
 import { StatsCards } from "@/components/stats-cards";
 import { PackageCard } from "@/components/package-card";
+import { QuickActions } from "@/components/quick-actions";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { PackagesResponse, FilterOptions } from "@/lib/types";
@@ -69,6 +70,10 @@ export default function Dashboard() {
     setFilters(prev => ({ ...prev, [key]: value }));
   };
 
+  const handleQuickFilterChange = (newFilters: Partial<FilterOptions>) => {
+    setFilters(prev => ({ ...prev, ...newFilters }));
+  };
+
   const resetFilters = () => {
     setFilters({ status: 'all', permitType: 'all', search: '' });
   };
@@ -122,6 +127,9 @@ export default function Dashboard() {
         ) : (
           data && <StatsCards stats={data.stats} />
         )}
+
+        {/* Quick Actions */}
+        <QuickActions onFilterChange={handleQuickFilterChange} />
 
         {/* Filters and Actions */}
         <Card className="mb-6">
