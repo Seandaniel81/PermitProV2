@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { permitPackages, packageDocuments, DEFAULT_BUILDING_PERMIT_DOCS } from "@shared/schema";
+import { permitPackages, packageDocuments, users, settings, DEFAULT_BUILDING_PERMIT_DOCS, DEFAULT_SETTINGS } from "@shared/schema";
 
 export async function seedDatabase() {
   // Check if database already has data

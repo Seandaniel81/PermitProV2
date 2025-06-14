@@ -6,11 +6,29 @@ import {
   InsertDocument, 
   UpdateDocument,
   PackageWithDocuments,
+  User,
+  UpsertUser,
+  Setting,
+  InsertSetting,
+  UpdateSetting,
   PACKAGE_STATUSES,
   DEFAULT_BUILDING_PERMIT_DOCS
 } from "@shared/schema";
 
 export interface IStorage {
+  // User methods
+  getUser(id: string): Promise<User | undefined>;
+  upsertUser(user: UpsertUser): Promise<User>;
+  getAllUsers(): Promise<User[]>;
+  updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
+  
+  // Settings methods
+  getSetting(key: string): Promise<Setting | undefined>;
+  getAllSettings(): Promise<Setting[]>;
+  getSettingsByCategory(category: string): Promise<Setting[]>;
+  upsertSetting(setting: InsertSetting): Promise<Setting>;
+  updateSetting(id: number, updates: UpdateSetting): Promise<Setting | undefined>;
+  
   // Package methods
   getPackage(id: number): Promise<PermitPackage | undefined>;
   getPackageWithDocuments(id: number): Promise<PackageWithDocuments | undefined>;

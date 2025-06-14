@@ -6,15 +6,104 @@ import {
   InsertDocument, 
   UpdateDocument,
   PackageWithDocuments,
+  User,
+  UpsertUser,
+  Setting,
+  InsertSetting,
+  UpdateSetting,
   PACKAGE_STATUSES,
   permitPackages,
-  packageDocuments
+  packageDocuments,
+  users,
+  settings
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
 import { IStorage } from "./storage";
 
 export class DatabaseStorage implements IStorage {
+  // User methods
+  async getUser(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async upsertUser(userData: UpsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(userData)
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          ...userData,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return user;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
+    const [updatedUser] = await db
+      .update(users)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, id))
+      .returning();
+
+    return updatedUser || undefined;
+  }
+
+  // Settings methods
+  async getSetting(key: string): Promise<Setting | undefined> {
+    const [setting] = await db.select().from(settings).where(eq(settings.key, key));
+    return setting || undefined;
+  }
+
+  async getAllSettings(): Promise<Setting[]> {
+    return await db.select().from(settings).orderBy(settings.category, settings.key);
+  }
+
+  async getSettingsByCategory(category: string): Promise<Setting[]> {
+    return await db.select().from(settings).where(eq(settings.category, category));
+  }
+
+  async upsertSetting(settingData: InsertSetting): Promise<Setting> {
+    const [setting] = await db
+      .insert(settings)
+      .values({
+        ...settingData,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: settings.key,
+        set: {
+          ...settingData,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return setting;
+  }
+
+  async updateSetting(id: number, updates: UpdateSetting): Promise<Setting | undefined> {
+    const [updatedSetting] = await db
+      .update(settings)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(eq(settings.id, id))
+      .returning();
+
+    return updatedSetting || undefined;
+  }
   async getPackage(id: number): Promise<PermitPackage | undefined> {
     const [pkg] = await db.select().from(permitPackages).where(eq(permitPackages.id, id));
     return pkg || undefined;
