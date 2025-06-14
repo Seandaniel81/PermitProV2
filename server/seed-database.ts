@@ -3,13 +3,41 @@ import { permitPackages, packageDocuments, users, settings, DEFAULT_BUILDING_PER
 
 export async function seedDatabase() {
   // Check if database already has data
-  const existingPackages = await db.select().from(permitPackages).limit(1);
-  if (existingPackages.length > 0) {
+  const existingUsers = await db.select().from(users).limit(1);
+  if (existingUsers.length > 0) {
     console.log("Database already seeded, skipping...");
     return;
   }
 
   console.log("Seeding database with sample data...");
+
+  // Create administrator user
+  const [adminUser] = await db.insert(users).values({
+    id: "admin-1",
+    email: "admin@permittracker.com",
+    firstName: "System",
+    lastName: "Administrator",
+    role: "admin",
+    isActive: true,
+  }).returning();
+
+  // Create regular user
+  const [regularUser] = await db.insert(users).values({
+    id: "user-1",
+    email: "user@permittracker.com",
+    firstName: "John",
+    lastName: "Doe",
+    role: "user",
+    isActive: true,
+  }).returning();
+
+  // Insert default settings
+  for (const settingData of DEFAULT_SETTINGS) {
+    await db.insert(settings).values({
+      ...settingData,
+      updatedBy: adminUser.id,
+    });
+  }
 
   // Create sample packages
   const samplePackages = [
@@ -23,6 +51,8 @@ export async function seedDatabase() {
       clientEmail: "contact@abcdev.com",
       clientPhone: "(555) 123-4567",
       estimatedValue: 250000000, // $2.5M in cents
+      createdBy: adminUser.id,
+      assignedTo: regularUser.id,
     },
     {
       projectName: "Residential Renovation - Smith Property",
@@ -34,6 +64,8 @@ export async function seedDatabase() {
       clientEmail: "john.smith@email.com",
       clientPhone: "(555) 987-6543",
       estimatedValue: 7500000, // $75K in cents
+      createdBy: regularUser.id,
+      assignedTo: regularUser.id,
     },
     {
       projectName: "Industrial Warehouse Expansion",
@@ -45,6 +77,8 @@ export async function seedDatabase() {
       clientEmail: "permits@industrialsolutions.com",
       clientPhone: "(555) 456-7890",
       estimatedValue: 150000000, // $1.5M in cents
+      createdBy: adminUser.id,
+      assignedTo: regularUser.id,
     }
   ];
 
@@ -74,4 +108,5 @@ export async function seedDatabase() {
   }
 
   console.log("Database seeded successfully!");
+  console.log("Administrator account created: admin@permittracker.com");
 }
