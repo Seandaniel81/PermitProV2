@@ -32,7 +32,7 @@ export function getSession() {
     tableName: "sessions",
   });
   return session({
-    secret: process.env.SESSION_SECRET!,
+    secret: process.env.SESSION_SECRET || "permit-tracker-dev-secret-key-change-in-production",
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
@@ -168,6 +168,6 @@ export const isAdmin: RequestHandler = async (req, res, next) => {
     return res.status(403).json({ message: "Admin access required" });
   }
 
-  req.dbUser = dbUser;
+  (req as any).dbUser = dbUser;
   next();
 };

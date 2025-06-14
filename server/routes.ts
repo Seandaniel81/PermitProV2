@@ -1,16 +1,105 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { setupAuth, isAuthenticated, isAdmin } from "./replitAuth";
 import { 
   insertPermitPackageSchema, 
   updatePermitPackageSchema,
   insertDocumentSchema,
   updateDocumentSchema,
+  insertSettingSchema,
+  updateSettingSchema,
   PACKAGE_STATUSES,
   DEFAULT_BUILDING_PERMIT_DOCS
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Auth middleware
+  await setupAuth(app);
+
+  // Auth routes
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // Settings routes (admin only)
+  app.get('/api/settings', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const settings = await storage.getAllSettings();
+      res.json(settings);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch settings" });
+    }
+  });
+
+  app.get('/api/settings/category/:category', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { category } = req.params;
+      const settings = await storage.getSettingsByCategory(category);
+      res.json(settings);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch settings" });
+    }
+  });
+
+  app.put('/api/settings/:id', isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const validation = updateSettingSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "Invalid setting data", 
+          errors: validation.error.errors 
+        });
+      }
+
+      const updatedSetting = await storage.updateSetting(id, {
+        ...validation.data,
+        updatedBy: req.dbUser.id,
+      });
+      
+      if (!updatedSetting) {
+        return res.status(404).json({ message: "Setting not found" });
+      }
+
+      res.json(updatedSetting);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update setting" });
+    }
+  });
+
+  // User management routes (admin only)
+  app.get('/api/users', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      res.json(users);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  app.put('/api/users/:id', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      
+      const updatedUser = await storage.updateUser(id, updates);
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.json(updatedUser);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update user" });
+    }
+  });
   
   // Get all packages with statistics
   app.get("/api/packages", async (req, res) => {
