@@ -1,7 +1,43 @@
-import { pgTable, text, serial, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, varchar, jsonb, index, boolean } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// User storage table.
+export const users = pgTable("users", {
+  id: varchar("id").primaryKey().notNull(),
+  email: varchar("email").unique(),
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
+  profileImageUrl: varchar("profile_image_url"),
+  role: varchar("role").notNull().default("user"), // user, admin
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Session storage table.
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: jsonb("sess").notNull(),
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)],
+);
+
+// Settings table for system configuration
+export const settings = pgTable("settings", {
+  id: serial("id").primaryKey(),
+  key: varchar("key").notNull().unique(),
+  value: jsonb("value").notNull(),
+  description: text("description"),
+  category: varchar("category").notNull().default("general"),
+  isSystem: boolean("is_system").notNull().default(false),
+  updatedBy: varchar("updated_by").references(() => users.id),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
 
 export const permitPackages = pgTable("permit_packages", {
   id: serial("id").primaryKey(),
@@ -14,6 +50,8 @@ export const permitPackages = pgTable("permit_packages", {
   clientEmail: text("client_email"),
   clientPhone: text("client_phone"),
   estimatedValue: integer("estimated_value"), // in cents
+  createdBy: varchar("created_by").references(() => users.id),
+  assignedTo: varchar("assigned_to").references(() => users.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   submittedAt: timestamp("submitted_at"),
@@ -32,8 +70,24 @@ export const packageDocuments = pgTable("package_documents", {
 });
 
 // Relations
-export const permitPackagesRelations = relations(permitPackages, ({ many }) => ({
+export const usersRelations = relations(users, ({ many }) => ({
+  createdPackages: many(permitPackages, { relationName: "createdBy" }),
+  assignedPackages: many(permitPackages, { relationName: "assignedTo" }),
+  settingsUpdates: many(settings),
+}));
+
+export const permitPackagesRelations = relations(permitPackages, ({ many, one }) => ({
   documents: many(packageDocuments),
+  creator: one(users, {
+    fields: [permitPackages.createdBy],
+    references: [users.id],
+    relationName: "createdBy",
+  }),
+  assignee: one(users, {
+    fields: [permitPackages.assignedTo],
+    references: [users.id],
+    relationName: "assignedTo",
+  }),
 }));
 
 export const packageDocumentsRelations = relations(packageDocuments, ({ one }) => ({
@@ -43,7 +97,31 @@ export const packageDocumentsRelations = relations(packageDocuments, ({ one }) =
   }),
 }));
 
+export const settingsRelations = relations(settings, ({ one }) => ({
+  updatedByUser: one(users, {
+    fields: [settings.updatedBy],
+    references: [users.id],
+  }),
+}));
+
 // Permit package schemas
+// User schemas
+export const insertUserSchema = createInsertSchema(users).omit({
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateUserSchema = insertUserSchema.partial();
+
+// Settings schemas
+export const insertSettingSchema = createInsertSchema(settings).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export const updateSettingSchema = insertSettingSchema.partial();
+
+// Package schemas
 export const insertPermitPackageSchema = createInsertSchema(permitPackages).omit({
   id: true,
   createdAt: true,
@@ -62,6 +140,15 @@ export const insertDocumentSchema = createInsertSchema(packageDocuments).omit({
 export const updateDocumentSchema = insertDocumentSchema.partial();
 
 // Types
+export type User = typeof users.$inferSelect;
+export type UpsertUser = typeof users.$inferInsert;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type UpdateUser = z.infer<typeof updateUserSchema>;
+
+export type Setting = typeof settings.$inferSelect;
+export type InsertSetting = z.infer<typeof insertSettingSchema>;
+export type UpdateSetting = z.infer<typeof updateSettingSchema>;
+
 export type PermitPackage = typeof permitPackages.$inferSelect;
 export type InsertPermitPackage = z.infer<typeof insertPermitPackageSchema>;
 export type UpdatePermitPackage = z.infer<typeof updatePermitPackageSchema>;
@@ -96,6 +183,52 @@ export const PERMIT_TYPES = [
   'Sign Permit',
   'Fence Permit',
 ] as const;
+
+// Default system settings
+export const DEFAULT_SETTINGS = [
+  {
+    key: 'database_type',
+    value: { type: 'postgresql', description: 'PostgreSQL Database' },
+    description: 'Type of database being used for data storage',
+    category: 'database',
+    isSystem: true,
+  },
+  {
+    key: 'max_file_size',
+    value: { size: 10485760, unit: 'bytes' }, // 10MB
+    description: 'Maximum file size for document uploads',
+    category: 'uploads',
+    isSystem: false,
+  },
+  {
+    key: 'allowed_file_types',
+    value: { types: ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'] },
+    description: 'Allowed file types for document uploads',
+    category: 'uploads',
+    isSystem: false,
+  },
+  {
+    key: 'require_approval',
+    value: { enabled: true },
+    description: 'Require administrator approval for package submissions',
+    category: 'workflow',
+    isSystem: false,
+  },
+  {
+    key: 'email_notifications',
+    value: { enabled: true, smtp_host: '', smtp_port: 587 },
+    description: 'Email notification settings',
+    category: 'notifications',
+    isSystem: false,
+  },
+  {
+    key: 'auto_backup',
+    value: { enabled: false, interval: 'daily' },
+    description: 'Automatic database backup settings',
+    category: 'backup',
+    isSystem: false,
+  },
+];
 
 // Default document templates
 export const DEFAULT_BUILDING_PERMIT_DOCS = [
