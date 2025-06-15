@@ -124,6 +124,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get('/api/users/pending', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      const pendingUsers = users.filter(user => user.approvalStatus === 'pending');
+      res.json(pendingUsers);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch pending users" });
+    }
+  });
+
+  app.post('/api/users/:id/approve', isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      
+      const updatedUser = await storage.updateUser(id, {
+        approvalStatus: 'approved',
+        approvedBy: req.dbUser.id,
+        approvedAt: new Date(),
+        rejectionReason: null,
+      });
+      
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.json(updatedUser);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to approve user" });
+    }
+  });
+
+  app.post('/api/users/:id/reject', isAuthenticated, isAdmin, async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      
+      const updatedUser = await storage.updateUser(id, {
+        approvalStatus: 'rejected',
+        approvedBy: req.dbUser.id,
+        approvedAt: new Date(),
+        rejectionReason: reason || 'No reason provided',
+      });
+      
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.json(updatedUser);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to reject user" });
+    }
+  });
+
   app.put('/api/users/:id', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const { id } = req.params;
