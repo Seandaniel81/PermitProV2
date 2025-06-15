@@ -57,18 +57,39 @@ export interface IStorage {
 export class MemStorage implements IStorage {
   private packages: Map<number, PermitPackage>;
   private documents: Map<number, PackageDocument>;
+  private users: Map<string, User>;
+  private settings: Map<string, Setting>;
   private currentPackageId: number;
   private currentDocumentId: number;
 
   constructor() {
     this.packages = new Map();
     this.documents = new Map();
+    this.users = new Map();
+    this.settings = new Map();
     this.currentPackageId = 1;
     this.currentDocumentId = 1;
     
     // Initialize with some sample data
     this.initializeSampleData();
   }
+
+  // User management methods (stub implementations)
+  async getUser(id: string): Promise<User | undefined> { return undefined; }
+  async upsertUser(userData: UpsertUser): Promise<User> { 
+    return { id: '1', email: '', firstName: '', lastName: '', role: 'user', isActive: true, createdAt: new Date(), updatedAt: new Date() }; 
+  }
+  async getAllUsers(): Promise<User[]> { return []; }
+  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> { return undefined; }
+
+  // Settings methods (stub implementations)
+  async getSetting(key: string): Promise<Setting | undefined> { return undefined; }
+  async getAllSettings(): Promise<Setting[]> { return []; }
+  async getSettingsByCategory(category: string): Promise<Setting[]> { return []; }
+  async upsertSetting(settingData: InsertSetting): Promise<Setting> { 
+    return { id: 1, key: settingData.key, value: settingData.value, description: '', category: 'general', isSystem: false, updatedBy: '', updatedAt: new Date() }; 
+  }
+  async updateSetting(id: number, updates: UpdateSetting): Promise<Setting | undefined> { return undefined; }
 
   private initializeSampleData() {
     // Create sample packages
@@ -165,6 +186,8 @@ export class MemStorage implements IStorage {
       isCompleted: documentData.isCompleted || 0,
       fileName: documentData.fileName || null,
       fileSize: documentData.fileSize || null,
+      filePath: documentData.filePath || null,
+      mimeType: documentData.mimeType || null,
       uploadedAt: documentData.isCompleted ? new Date() : null,
       notes: documentData.notes || null,
     };
@@ -244,6 +267,10 @@ export class MemStorage implements IStorage {
   async getPackageDocuments(packageId: number): Promise<PackageDocument[]> {
     return Array.from(this.documents.values())
       .filter(doc => doc.packageId === packageId);
+  }
+
+  async getDocument(id: number): Promise<PackageDocument | undefined> {
+    return this.documents.get(id);
   }
 
   async createDocument(documentData: InsertDocument): Promise<PackageDocument> {

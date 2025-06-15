@@ -1,15 +1,17 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, X, Upload, FileText, Plus } from "lucide-react";
+import { Check, X, Upload, FileText, Plus, Download, Trash2, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
+import { Badge } from "@/components/ui/badge";
 import { useForm } from "react-hook-form";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { formatDate } from "@/lib/types";
 import type { PackageDocument } from "@/lib/types";
 
 interface DocumentChecklistProps {
@@ -24,6 +26,8 @@ interface AddDocumentForm {
 
 export function DocumentChecklist({ packageId, documents }: DocumentChecklistProps) {
   const [isAddingDocument, setIsAddingDocument] = useState(false);
+  const [uploadingDocId, setUploadingDocId] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
