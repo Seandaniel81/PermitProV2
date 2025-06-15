@@ -65,6 +65,8 @@ export const packageDocuments = pgTable("package_documents", {
   isCompleted: integer("is_completed").notNull().default(0), // 1 for true, 0 for false
   fileName: text("file_name"),
   fileSize: integer("file_size"),
+  filePath: text("file_path"), // Path to the uploaded file
+  mimeType: text("mime_type"), // File type (PDF, image, etc.)
   uploadedAt: timestamp("uploaded_at"),
   notes: text("notes"),
 });
