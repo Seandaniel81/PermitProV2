@@ -1,0 +1,30 @@
+[Unit]
+Description=Permit Management System
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/permit-system
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=10
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/permit-system/.env
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/permit-system/uploads /opt/permit-system/logs /opt/permit-system/backups
+
+# Logging
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=permit-system
+
+[Install]
+WantedBy=multi-user.target
