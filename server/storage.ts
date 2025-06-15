@@ -39,6 +39,7 @@ export interface IStorage {
   
   // Document methods
   getPackageDocuments(packageId: number): Promise<PackageDocument[]>;
+  getDocument(id: number): Promise<PackageDocument | undefined>;
   createDocument(documentData: InsertDocument): Promise<PackageDocument>;
   updateDocument(id: number, updates: UpdateDocument): Promise<PackageDocument | undefined>;
   deleteDocument(id: number): Promise<boolean>;
@@ -144,6 +145,8 @@ export class MemStorage implements IStorage {
       clientEmail: packageData.clientEmail || null,
       clientPhone: packageData.clientPhone || null,
       estimatedValue: packageData.estimatedValue || null,
+      createdBy: packageData.createdBy || null,
+      assignedTo: packageData.assignedTo || null,
       createdAt: now,
       updatedAt: now,
       submittedAt: packageData.status === PACKAGE_STATUSES.SUBMITTED ? now : null,

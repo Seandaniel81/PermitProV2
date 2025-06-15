@@ -185,6 +185,14 @@ export class DatabaseStorage implements IStorage {
       .where(eq(packageDocuments.packageId, packageId));
   }
 
+  async getDocument(id: number): Promise<PackageDocument | undefined> {
+    const [document] = await db.select()
+      .from(packageDocuments)
+      .where(eq(packageDocuments.id, id));
+    
+    return document || undefined;
+  }
+
   async createDocument(documentData: InsertDocument): Promise<PackageDocument> {
     const [newDocument] = await db
       .insert(packageDocuments)
