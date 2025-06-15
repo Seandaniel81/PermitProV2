@@ -49,6 +49,7 @@ function Router() {
           <Route path="/package/:id/edit" component={PackageEdit} />
           <Route path="/settings" component={Settings} />
           <Route path="/user-management" component={UserManagement} />
+          <Route path="/system-status" component={SystemStatus} />
         </>
       )}
       <Route component={NotFound} />
