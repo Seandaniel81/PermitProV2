@@ -150,22 +150,39 @@ export default function Landing() {
 
         {/* Call to Action */}
         <div className="text-center">
-          <Card className="max-w-md mx-auto">
+          <Card className="max-w-lg mx-auto">
             <CardHeader>
-              <CardTitle className="text-2xl">Ready to Get Started?</CardTitle>
+              <CardTitle className="text-2xl">Join Our Platform Today</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6">
               <p className="text-gray-600">
-                Sign in to access your permit packages and start managing your construction projects more efficiently.
+                Create your free account to start managing permit packages, tracking documents, 
+                and collaborating with your team on construction projects.
               </p>
-              <Button 
-                onClick={handleLogin}
-                size="lg" 
-                className="w-full"
-              >
-                Sign In to Continue
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
+              
+              <div className="space-y-3">
+                <Button 
+                  onClick={handleLogin}
+                  size="lg" 
+                  className="w-full"
+                >
+                  Sign Up / Sign In
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+                <p className="text-sm text-gray-500">
+                  New users will be automatically registered upon first sign-in
+                </p>
+              </div>
+
+              <div className="pt-4 border-t">
+                <h4 className="font-semibold text-gray-900 mb-2">What you get with your account:</h4>
+                <ul className="text-sm text-gray-600 space-y-1">
+                  <li>• Upload and manage scanned documents</li>
+                  <li>• Track progress across multiple permit packages</li>
+                  <li>• Collaborate with team members</li>
+                  <li>• Access to all permit types and templates</li>
+                </ul>
+              </div>
             </CardContent>
           </Card>
         </div>
