@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import express from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, isAdmin } from "./replitAuth";
@@ -17,6 +18,41 @@ import {
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Ensure uploads directory exists
+  const uploadsDir = path.join(process.cwd(), "uploads");
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+
+  // Configure multer for file uploads
+  const storage_multer = multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, uploadsDir);
+    },
+    filename: (req, file, cb) => {
+      // Create unique filename with timestamp
+      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+      const extension = path.extname(file.originalname);
+      cb(null, `${file.fieldname}-${uniqueSuffix}${extension}`);
+    }
+  });
+
+  const upload = multer({ 
+    storage: storage_multer,
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10MB limit
+    },
+    fileFilter: (req, file, cb) => {
+      // Allow common document types
+      const allowedTypes = /\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx|txt)$/i;
+      if (allowedTypes.test(file.originalname)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Invalid file type. Only documents and images are allowed.'));
+      }
+    }
+  });
+
   // Auth middleware
   await setupAuth(app);
 
@@ -306,6 +342,108 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to fetch statistics" });
     }
   });
+
+  // Upload file to document
+  app.post("/api/documents/:id/upload", upload.single('file'), async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      if (isNaN(documentId)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const updatedDocument = await storage.updateDocument(documentId, {
+        fileName: req.file.originalname,
+        fileSize: req.file.size,
+        filePath: req.file.path,
+        mimeType: req.file.mimetype,
+        isCompleted: 1, // Mark as completed when file is uploaded
+      });
+
+      if (!updatedDocument) {
+        // Clean up uploaded file if document not found
+        fs.unlinkSync(req.file.path);
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      res.json(updatedDocument);
+    } catch (error) {
+      // Clean up uploaded file on error
+      if (req.file) {
+        fs.unlinkSync(req.file.path);
+      }
+      res.status(500).json({ message: "Failed to upload file" });
+    }
+  });
+
+  // Download/view file
+  app.get("/api/documents/:id/download", async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      if (isNaN(documentId)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+
+      const document = await storage.getDocument(documentId);
+      if (!document || !document.filePath) {
+        return res.status(404).json({ message: "File not found" });
+      }
+
+      // Check if file exists on disk
+      if (!fs.existsSync(document.filePath)) {
+        return res.status(404).json({ message: "File not found on disk" });
+      }
+
+      // Set appropriate headers
+      res.setHeader('Content-Disposition', `attachment; filename="${document.fileName}"`);
+      res.setHeader('Content-Type', document.mimeType || 'application/octet-stream');
+      
+      // Stream the file
+      const fileStream = fs.createReadStream(document.filePath);
+      fileStream.pipe(res);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to download file" });
+    }
+  });
+
+  // Delete uploaded file
+  app.delete("/api/documents/:id/file", async (req, res) => {
+    try {
+      const documentId = parseInt(req.params.id);
+      if (isNaN(documentId)) {
+        return res.status(400).json({ message: "Invalid document ID" });
+      }
+
+      const document = await storage.getDocument(documentId);
+      if (!document) {
+        return res.status(404).json({ message: "Document not found" });
+      }
+
+      // Delete file from disk if it exists
+      if (document.filePath && fs.existsSync(document.filePath)) {
+        fs.unlinkSync(document.filePath);
+      }
+
+      // Update document to remove file info
+      const updatedDocument = await storage.updateDocument(documentId, {
+        fileName: null,
+        fileSize: null,
+        filePath: null,
+        mimeType: null,
+        isCompleted: 0, // Mark as incomplete when file is removed
+      });
+
+      res.json(updatedDocument);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete file" });
+    }
+  });
+
+  // Serve uploaded files statically
+  app.use('/uploads', express.static(uploadsDir));
 
   const httpServer = createServer(app);
   return httpServer;
