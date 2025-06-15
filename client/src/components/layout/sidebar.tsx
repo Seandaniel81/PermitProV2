@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { FileText, FolderPlus, Archive, Settings, LayoutDashboard, LogOut } from "lucide-react";
+import { FileText, FolderPlus, Archive, Settings, LayoutDashboard, LogOut, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ const navigation = [
   { name: 'New Package', href: '/new-package', icon: FolderPlus },
   { name: 'Templates', href: '/templates', icon: FileText },
   { name: 'Archive', href: '/archive', icon: Archive },
+  { name: 'User Management', href: '/user-management', icon: Users },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
@@ -23,7 +24,7 @@ export function Sidebar() {
 
   // Filter navigation based on user role
   const filteredNavigation = navigation.filter(item => {
-    if (item.href === '/settings') {
+    if (item.href === '/settings' || item.href === '/user-management') {
       return isAdmin;
     }
     return true;

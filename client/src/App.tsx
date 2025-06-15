@@ -10,6 +10,8 @@ import NewPackage from "@/pages/new-package";
 import PackageDetail from "@/pages/package-detail";
 import PackageEdit from "@/pages/package-edit";
 import Settings from "@/pages/settings";
+import UserManagement from "@/pages/user-management";
+import PendingApproval from "@/pages/pending-approval";
 import Landing from "@/pages/landing";
 import NotFound from "@/pages/not-found";
 
@@ -35,6 +37,7 @@ function Router() {
           <Route path="/package/:id" component={PackageDetail} />
           <Route path="/package/:id/edit" component={PackageEdit} />
           <Route path="/settings" component={Settings} />
+          <Route path="/user-management" component={UserManagement} />
         </>
       )}
       <Route component={NotFound} />
