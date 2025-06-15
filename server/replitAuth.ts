@@ -57,13 +57,31 @@ function updateUserSession(
 async function upsertUser(
   claims: any,
 ) {
-  await storage.upsertUser({
-    id: claims["sub"],
-    email: claims["email"],
-    firstName: claims["first_name"],
-    lastName: claims["last_name"],
-    profileImageUrl: claims["profile_image_url"],
-  });
+  const existingUser = await storage.getUser(claims["sub"]);
+  
+  if (!existingUser) {
+    // New user - create with pending approval status
+    await storage.upsertUser({
+      id: claims["sub"],
+      email: claims["email"],
+      firstName: claims["first_name"],
+      lastName: claims["last_name"],
+      profileImageUrl: claims["profile_image_url"],
+      approvalStatus: "pending",
+      role: "user",
+    });
+  } else {
+    // Existing user - update profile info but keep approval status
+    await storage.upsertUser({
+      id: claims["sub"],
+      email: claims["email"],
+      firstName: claims["first_name"] || existingUser.firstName,
+      lastName: claims["last_name"] || existingUser.lastName,
+      profileImageUrl: claims["profile_image_url"] || existingUser.profileImageUrl,
+      approvalStatus: existingUser.approvalStatus,
+      role: existingUser.role,
+    });
+  }
 }
 
 export async function setupAuth(app: Express) {
@@ -136,6 +154,32 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
 
   const now = Math.floor(Date.now() / 1000);
   if (now <= user.expires_at) {
+    // Check user approval status
+    const dbUser = await storage.getUser(user.claims.sub);
+    if (!dbUser) {
+      return res.status(401).json({ message: "User not found" });
+    }
+    
+    if (dbUser.approvalStatus === "rejected") {
+      return res.status(403).json({ 
+        message: "Account access denied", 
+        reason: dbUser.rejectionReason || "Your account has been rejected by an administrator" 
+      });
+    }
+    
+    if (dbUser.approvalStatus === "pending") {
+      return res.status(403).json({ 
+        message: "Account pending approval", 
+        reason: "Your account is awaiting administrator approval" 
+      });
+    }
+    
+    if (dbUser.approvalStatus !== "approved") {
+      return res.status(403).json({ message: "Account not approved" });
+    }
+    
+    // Store user info in request for later use
+    (req as any).dbUser = dbUser;
     return next();
   }
 
@@ -149,6 +193,14 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     const config = await getOidcConfig();
     const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
     updateUserSession(user, tokenResponse);
+    
+    // Re-check approval status after token refresh
+    const dbUser = await storage.getUser(user.claims.sub);
+    if (!dbUser || dbUser.approvalStatus !== "approved") {
+      return res.status(403).json({ message: "Account not approved" });
+    }
+    
+    (req as any).dbUser = dbUser;
     return next();
   } catch (error) {
     res.status(401).json({ message: "Unauthorized" });

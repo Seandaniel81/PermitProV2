@@ -12,6 +12,12 @@ export const users = pgTable("users", {
   profileImageUrl: varchar("profile_image_url"),
   role: varchar("role").notNull().default("user"), // user, admin
   isActive: boolean("is_active").notNull().default(true),
+  approvalStatus: varchar("approval_status").notNull().default("pending"), // pending, approved, rejected
+  approvedBy: varchar("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
+  company: varchar("company"),
+  phone: varchar("phone"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -72,10 +78,16 @@ export const packageDocuments = pgTable("package_documents", {
 });
 
 // Relations
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ many, one }) => ({
   createdPackages: many(permitPackages, { relationName: "createdBy" }),
   assignedPackages: many(permitPackages, { relationName: "assignedTo" }),
   settingsUpdates: many(settings),
+  approvedUsers: many(users, { relationName: "approver" }),
+  // approver: one(users, { 
+  //   fields: [users.approvedBy], 
+  //   references: [users.id],
+  //   relationName: "approver"
+  // }),
 }));
 
 export const permitPackagesRelations = relations(permitPackages, ({ many, one }) => ({
