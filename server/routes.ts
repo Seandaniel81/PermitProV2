@@ -497,6 +497,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Health monitoring endpoints
+  app.get('/api/health', async (req, res) => {
+    try {
+      const health = await healthMonitor.checkHealth();
+      const status = healthMonitor.isHealthy() ? 200 : 503;
+      res.status(status).json(health);
+    } catch (error) {
+      res.status(503).json({
+        database: { connected: false, responseTime: 0, error: 'Health check failed' },
+        storage: { uploadsWritable: false, backupsWritable: false, diskSpace: { total: 0, free: 0, used: 0, percentage: 0 } },
+        system: { uptime: process.uptime(), memory: { used: 0, total: 0, percentage: 0 } },
+        lastCheck: new Date(),
+      });
+    }
+  });
+
+  // System status endpoint (admin only)
+  app.get('/api/system/status', isAdmin, async (req, res) => {
+    try {
+      const health = await healthMonitor.checkHealth();
+      const systemInfo = {
+        ...health,
+        config: {
+          environment: config.server.environment,
+          databaseHost: config.database.host,
+          uploadsDirectory: config.uploads.directory,
+          backupDirectory: config.backup.directory,
+          maxFileSize: config.uploads.maxFileSize,
+          autoBackup: config.backup.autoBackup,
+        },
+        version: process.env.npm_package_version || '1.0.0',
+        nodeVersion: process.version,
+      };
+      res.json(systemInfo);
+    } catch (error) {
+      res.status(500).json({ message: 'Failed to get system status' });
+    }
+  });
+
+  // Database backup endpoint (admin only)
+  app.post('/api/system/backup', isAdmin, async (req, res) => {
+    try {
+      const { execSync } = require('child_process');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const backupFile = path.join(config.backup.directory, `permits_backup_${timestamp}.sql`);
+      
+      // Ensure backup directory exists
+      if (!fs.existsSync(config.backup.directory)) {
+        fs.mkdirSync(config.backup.directory, { recursive: true });
+      }
+
+      const dbUrl = new URL(config.database.url);
+      const env = { ...process.env, PGPASSWORD: dbUrl.password };
+
+      execSync(`pg_dump -h ${dbUrl.hostname} -p ${dbUrl.port || 5432} -U ${dbUrl.username} -d ${dbUrl.pathname.slice(1)} -f ${backupFile}`, {
+        env,
+        stdio: 'pipe'
+      });
+
+      const stats = fs.statSync(backupFile);
+      res.json({
+        success: true,
+        backupFile,
+        size: stats.size,
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        success: false, 
+        message: 'Backup failed',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // Serve uploaded files statically
   app.use('/uploads', express.static(uploadsDir));
 

@@ -11,6 +11,7 @@ import PackageDetail from "@/pages/package-detail";
 import PackageEdit from "@/pages/package-edit";
 import Settings from "@/pages/settings";
 import UserManagement from "@/pages/user-management";
+import SystemStatus from "@/pages/system-status";
 import PendingApproval from "@/pages/pending-approval";
 import Landing from "@/pages/landing";
 import NotFound from "@/pages/not-found";
