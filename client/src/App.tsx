@@ -16,7 +16,7 @@ import Landing from "@/pages/landing";
 import NotFound from "@/pages/not-found";
 
 function Router() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, needsApproval, isRejected } = useAuth();
 
   if (isLoading) {
     return (
@@ -26,9 +26,19 @@ function Router() {
     );
   }
 
+  // Show pending approval page if user needs admin approval
+  if (needsApproval) {
+    return <PendingApproval />;
+  }
+
+  // Show rejection message if user was rejected
+  if (isRejected) {
+    return <PendingApproval />; // Could create a separate rejection page if needed
+  }
+
   return (
     <Switch>
-      {isLoading || !isAuthenticated ? (
+      {!isAuthenticated ? (
         <Route path="/" component={Landing} />
       ) : (
         <>
