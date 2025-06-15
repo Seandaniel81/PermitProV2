@@ -66,7 +66,7 @@ export default function SystemStatus() {
     mutationFn: async () => {
       return await apiRequest("/api/system/backup", "POST", {});
     },
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       toast({
         title: "Backup Created",
         description: `Database backup completed successfully. Size: ${Math.round(data.size / (1024 * 1024))} MB`,
