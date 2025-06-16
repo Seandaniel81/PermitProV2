@@ -16,6 +16,7 @@ A comprehensive building permit package management system for tracking assembly 
 - Node.js 18+ 
 - PostgreSQL 12+
 - npm or yarn package manager
+- Standard PostgreSQL database (not serverless variants)
 
 ## Quick Installation
 
