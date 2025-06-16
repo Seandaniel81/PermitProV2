@@ -57,16 +57,25 @@ function Router() {
   );
 }
 
+function AppContent() {
+  const { isAuthenticated, isLoading, needsApproval, isRejected } = useAuth();
+
+  return (
+    <div className="min-h-screen flex bg-gray-50">
+      {/* Only show sidebar when user is fully authenticated */}
+      {isAuthenticated && !needsApproval && !isRejected && <Sidebar />}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <Router />
+      </div>
+    </div>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <div className="min-h-screen flex bg-gray-50">
-          <Sidebar />
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <Router />
-          </div>
-        </div>
+        <AppContent />
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

@@ -19,6 +19,8 @@ export async function seedDatabase() {
     lastName: "Administrator",
     role: "admin",
     isActive: true,
+    approvalStatus: "approved",
+    approvedAt: new Date(),
   }).returning();
 
   // Create regular user
@@ -29,6 +31,8 @@ export async function seedDatabase() {
     lastName: "Doe",
     role: "user",
     isActive: true,
+    approvalStatus: "approved",
+    approvedAt: new Date(),
   }).returning();
 
   // Insert default settings
