@@ -1,3 +1,4 @@
+
 import { db } from "./db";
 import { permitPackages, packageDocuments, users, settings, DEFAULT_BUILDING_PERMIT_DOCS, DEFAULT_SETTINGS } from "@shared/schema";
 
@@ -113,4 +114,17 @@ export async function seedDatabase() {
 
   console.log("Database seeded successfully!");
   console.log("Administrator account created: admin@permittracker.com");
+}
+
+// Allow running this script directly
+if (import.meta.main) {
+  seedDatabase()
+    .then(() => {
+      console.log("Seeding completed!");
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error("Seeding failed:", error);
+      process.exit(1);
+    });
 }
