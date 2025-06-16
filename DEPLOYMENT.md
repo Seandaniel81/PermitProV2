@@ -1,157 +1,264 @@
-# Independent Database Deployment Guide
-
-This permit management system is designed for independent hosting at home or business locations with its own PostgreSQL database.
+# Production Deployment Guide
 
 ## Prerequisites
 
-- Node.js 18+ installed
-- PostgreSQL 12+ installed and running
-- Git (for cloning the repository)
+- Node.js 18+
+- PostgreSQL 12+
+- PM2 (recommended for production)
+- Nginx or Apache (for reverse proxy)
 
-## Quick Setup
+## Quick Deployment
 
-1. **Clone and Install**
+### 1. Automated Installation
+
 ```bash
-git clone <repository-url>
-cd permit-management-system
-npm install
+# Make installation script executable
+chmod +x install.sh
+
+# Run installation
+./install.sh
 ```
 
-2. **Setup Database**
+### 2. Manual Configuration
+
+After installation, edit `.env` file with your production settings:
+
 ```bash
-# Create PostgreSQL database
-createdb permits_db
-
-# Copy environment template
-cp .env.example .env
-
-# Edit .env with your database credentials
-nano .env
-```
-
-3. **Configure Environment**
-Edit `.env` file with your settings:
-```env
+# Database Configuration
 DATABASE_URL=postgresql://username:password@localhost:5432/permits_db
-SESSION_SECRET=generate-a-secure-random-string
+
+# Authentication (automatically generated secure secret)
+SESSION_SECRET=64-character-hex-string-generated-automatically
+REPL_ID=standalone
+REPLIT_DOMAINS=yourdomain.com
+
+# Application Settings
+NODE_ENV=production
+PORT=5000
 ```
 
-4. **Initialize Database**
-```bash
-node scripts/setup-database.js
-```
+### 3. Start Production Server
 
-5. **Start Application**
 ```bash
-npm run build
+# Using PM2 (recommended)
+pm2 start ecosystem.config.js
+pm2 save
+pm2 startup
+
+# Or using npm
 npm start
 ```
 
-## Database Management
+## Configuration Validation
 
-### Backup Database
+The application includes comprehensive configuration validation:
+
+- **Session Secret**: Automatically generated 64-character secure secret
+- **Database URL**: Validated PostgreSQL connection string
+- **Port Configuration**: Configurable via PORT environment variable
+- **File Upload**: Configurable upload directory and size limits
+
+## Nginx Configuration
+
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com;
+    
+    # Redirect HTTP to HTTPS
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name yourdomain.com;
+    
+    # SSL Configuration
+    ssl_certificate /path/to/your/certificate.crt;
+    ssl_certificate_key /path/to/your/private.key;
+    
+    # Security headers
+    add_header X-Frame-Options DENY;
+    add_header X-Content-Type-Options nosniff;
+    add_header X-XSS-Protection "1; mode=block";
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains";
+    
+    # Proxy to Node.js application
+    location / {
+        proxy_pass http://localhost:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 86400;
+    }
+    
+    # Static file optimization
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        proxy_pass http://localhost:5000;
+    }
+}
+```
+
+## Database Backup Strategy
+
+### Automated Backups
+
+The application includes built-in backup functionality:
+
 ```bash
+# Run backup script
 node scripts/backup-database.js
-```
-Backups are saved to `./backups/` directory.
 
-### Restore Database
+# Restore from backup
+node scripts/restore-database.js backup_filename.sql
+```
+
+### Manual PostgreSQL Backup
+
 ```bash
-node scripts/restore-database.js ./backups/backup-file.sql
+# Create backup
+pg_dump $DATABASE_URL > backup_$(date +%Y%m%d_%H%M%S).sql
+
+# Restore backup
+psql $DATABASE_URL < backup_file.sql
 ```
 
-### Manual Database Operations
+## Security Checklist
+
+- [ ] Strong database passwords
+- [ ] Secure session secret (64+ characters)
+- [ ] SSL/TLS certificates configured
+- [ ] Firewall rules configured
+- [ ] Regular security updates
+- [ ] File upload restrictions in place
+- [ ] Database connection encryption enabled
+
+## Performance Optimization
+
+### PM2 Configuration
+
+```javascript
+// ecosystem.config.js
+module.exports = {
+  apps: [{
+    name: 'permit-management-system',
+    script: 'dist/index.js',
+    instances: 'max',
+    exec_mode: 'cluster',
+    autorestart: true,
+    watch: false,
+    max_memory_restart: '1G',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 5000
+    }
+  }]
+};
+```
+
+### Database Optimization
+
+```sql
+-- Add indexes for better performance
+CREATE INDEX idx_packages_status ON permit_packages(status);
+CREATE INDEX idx_packages_created_by ON permit_packages(created_by);
+CREATE INDEX idx_documents_package_id ON package_documents(package_id);
+CREATE INDEX idx_documents_completed ON package_documents(is_completed);
+```
+
+## Monitoring and Logging
+
+### PM2 Monitoring
+
 ```bash
-# Push schema changes
-npm run db:push
+# View logs
+pm2 logs
 
-# View database with Drizzle Studio
-npm run db:studio
+# Monitor processes
+pm2 monit
+
+# View process status
+pm2 status
 ```
 
-## Production Deployment
+### Log Files
 
-### Using PM2 (Recommended)
-```bash
-# Install PM2 globally
-npm install -g pm2
-
-# Start application with PM2
-pm2 start ecosystem.config.js
-
-# Save PM2 configuration
-pm2 save
-pm2 startup
-```
-
-### Using Docker
-```bash
-# Build container
-docker build -t permit-system .
-
-# Run with database
-docker-compose up -d
-```
-
-### Using systemd (Linux)
-```bash
-# Copy service file
-sudo cp scripts/permit-system.service /etc/systemd/system/
-
-# Enable and start
-sudo systemctl enable permit-system
-sudo systemctl start permit-system
-```
-
-## Security Considerations
-
-- Change default SESSION_SECRET to a strong random value
-- Use SSL/TLS certificates for HTTPS in production
-- Configure firewall to limit database access
-- Regular database backups
-- Keep PostgreSQL updated
-
-## File Storage
-
-- Document uploads stored in `./uploads/` directory
-- Ensure sufficient disk space for document storage
-- Consider backup strategy for uploaded files
-
-## Network Configuration
-
-- Default port: 5000
-- Configure reverse proxy (nginx/Apache) for production
-- Set up SSL certificates
-- Configure domain name and DNS
+- Application logs: `logs/combined.log`
+- Error logs: `logs/err.log`
+- Access logs: Available through PM2 or nginx
 
 ## Troubleshooting
 
-### Database Connection Issues
-- Verify PostgreSQL is running
-- Check DATABASE_URL format
-- Confirm database exists and credentials are correct
+### Common Issues
 
-### Permission Issues
-- Ensure uploads directory is writable
-- Check file system permissions
-- Verify PostgreSQL user has necessary privileges
+1. **Port already in use**
+   ```bash
+   # Change port in .env file
+   PORT=5001
+   ```
 
-### Performance Optimization
-- Index database tables appropriately
-- Configure PostgreSQL memory settings
-- Monitor disk space usage
-- Set up log rotation
+2. **Database connection failed**
+   ```bash
+   # Test connection
+   psql $DATABASE_URL -c "SELECT version();"
+   ```
+
+3. **Permission denied on file uploads**
+   ```bash
+   # Fix directory permissions
+   chmod 755 uploads logs backups
+   ```
+
+4. **Session secret validation failed**
+   ```bash
+   # Generate new secret
+   openssl rand -hex 32
+   ```
+
+### Health Checks
+
+```bash
+# Application health check
+curl -I http://localhost:5000
+
+# Database health check
+curl http://localhost:5000/api/health
+```
+
+## Scaling Considerations
+
+- Use PM2 cluster mode for multi-core utilization
+- Implement Redis for session storage in multi-instance deployments
+- Configure load balancer for high availability
+- Set up database read replicas for improved performance
+- Implement CDN for static assets
 
 ## Maintenance
 
 ### Regular Tasks
-- Database backups (automated recommended)
-- Log file rotation
-- Software updates
-- SSL certificate renewal
 
-### Monitoring
-- Check application logs
-- Monitor database performance
-- Track disk space usage
-- Review user access logs
+- Monitor disk space for uploads and logs
+- Review and rotate log files
+- Update dependencies regularly
+- Backup database regularly
+- Monitor application performance
+
+### Updates
+
+```bash
+# Update dependencies
+npm update
+
+# Rebuild application
+npm run build
+
+# Restart PM2 processes
+pm2 restart all
+```
