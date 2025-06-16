@@ -29,7 +29,7 @@ try {
 // Run initial seed
 try {
   console.log('🌱 Seeding initial data...');
-  execSync('node server/seed-database.js', { stdio: 'inherit' });
+  execSync('npx tsx server/seed-database.ts', { stdio: 'inherit' });
   console.log('✅ Initial data seeded successfully');
 } catch (error) {
   console.error('❌ Failed to seed initial data:', error.message);
