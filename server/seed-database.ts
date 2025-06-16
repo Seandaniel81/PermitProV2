@@ -117,7 +117,7 @@ export async function seedDatabase() {
 }
 
 // Allow running this script directly
-if (require.main === module) {
+if (import.meta.main) {
   seedDatabase()
     .then(() => {
       console.log("Seeding completed!");
