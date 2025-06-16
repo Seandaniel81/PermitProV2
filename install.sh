@@ -43,12 +43,17 @@ if [ ! -f .env ]; then
         read -p "Press Enter when you've configured .env file..."
     else
         echo "❌ .env.example file not found. Creating basic .env template..."
+        # Generate a secure session secret
+        SESSION_SECRET=$(openssl rand -hex 32)
         cat > .env << EOF
 # Database Configuration
 DATABASE_URL=postgresql://username:password@localhost:5432/permits_db
 
 # Authentication
-SESSION_SECRET=your-secure-session-secret-here
+SESSION_SECRET=$SESSION_SECRET
+REPL_ID=standalone
+ISSUER_URL=https://replit.com/oidc
+REPLIT_DOMAINS=localhost
 
 # Application Settings
 NODE_ENV=production
