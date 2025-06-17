@@ -174,11 +174,29 @@ The system uses the following main entities:
 | `UPLOAD_DIR` | File upload directory | `./uploads` |
 | `MAX_FILE_SIZE` | Max upload size in bytes | `10485760` |
 
+### Authentication Setup
+
+The application uses OpenID Connect for authentication. You need to configure an OAuth provider:
+
+1. **Quick Setup with Google:**
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create OAuth 2.0 credentials
+   - Set redirect URI: `https://yourdomain.com/api/callback`
+   - Update `.env` with your credentials
+
+2. **Configuration:**
+   ```bash
+   OIDC_ISSUER_URL=https://accounts.google.com
+   OIDC_CLIENT_ID=your-google-client-id
+   OIDC_CLIENT_SECRET=your-google-client-secret
+   ALLOWED_DOMAINS=yourdomain.com
+   ```
+
+3. **See `OIDC_SETUP.md` for detailed provider setup instructions**
+
 ### Default Users
 
-After initial setup, the following accounts are available:
-- **Administrator**: `admin@permittracker.com`
-- **Regular User**: `user@permittracker.com`
+After initial setup, the first user to log in becomes an administrator. Additional users require approval unless `AUTO_APPROVE_USERS=true` is set.
 
 ## Troubleshooting
 
