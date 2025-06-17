@@ -2,7 +2,7 @@ import type { Express } from "express";
 import express from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, isAdmin } from "./auth";
+import { setupLocalAuth, isAuthenticated, isAdmin } from "./local-auth";
 import { healthMonitor } from "./health-monitor";
 import { config } from "./config";
 import multer from "multer";
