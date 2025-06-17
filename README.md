@@ -13,9 +13,8 @@ A comprehensive building permit package management system for tracking assembly 
 
 ## Requirements
 
-- Node.js 18+ 
+- Bun runtime (or Node.js 18+)
 - PostgreSQL 12+
-- npm or yarn package manager
 - Standard PostgreSQL database (not serverless variants)
 
 ## Quick Installation
@@ -42,7 +41,7 @@ The script will:
 ```bash
 git clone <repository-url>
 cd permit-management-system
-npm install
+bun install
 ```
 
 ### 2. Environment Setup
@@ -74,22 +73,22 @@ createdb permits_db
 
 Push the schema and seed initial data:
 ```bash
-npm run db:push
-npx tsx scripts/setup-database.ts
+bun run db:push
+bun run scripts/setup-database.ts
 ```
 
 ### 4. Build and Start
 
 ```bash
-npm run build
-npm start
+bun run build
+bun start
 ```
 
 ## Development
 
 For development with hot reload:
 ```bash
-npm run dev
+bun run dev
 ```
 
 The application will be available at `http://localhost:5000`
@@ -99,7 +98,7 @@ The application will be available at `http://localhost:5000`
 ### Using PM2 (Recommended)
 
 ```bash
-npm install -g pm2
+bun install -g pm2
 pm2 start ecosystem.config.js
 pm2 save
 pm2 startup
@@ -216,8 +215,8 @@ chmod 755 uploads logs backups
 ```bash
 # Clear cache and rebuild
 rm -rf node_modules dist
-npm install
-npm run build
+bun install
+bun run build
 ```
 
 ## Support

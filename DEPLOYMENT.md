@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Node.js 18+
+- Bun runtime (or Node.js 18+)
 - PostgreSQL 12+
 - PM2 (recommended for production)
 - Nginx or Apache (for reverse proxy)
@@ -45,8 +45,8 @@ pm2 start ecosystem.config.js
 pm2 save
 pm2 startup
 
-# Or using npm
-npm start
+# Or using bun
+bun start
 ```
 
 ## Configuration Validation
