@@ -58,7 +58,92 @@ The application includes comprehensive configuration validation:
 - **Port Configuration**: Configurable via PORT environment variable
 - **File Upload**: Configurable upload directory and size limits
 
-## Nginx Configuration
+## Apache2 Configuration
+
+### Virtual Host Configuration
+
+Create a virtual host file at `/etc/apache2/sites-available/permit-management.conf`:
+
+```apache
+<VirtualHost *:80>
+    ServerName yourdomain.com
+    ServerAlias www.yourdomain.com
+    
+    # Redirect HTTP to HTTPS
+    RewriteEngine On
+    RewriteCond %{HTTPS} off
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
+</VirtualHost>
+
+<VirtualHost *:443>
+    ServerName yourdomain.com
+    ServerAlias www.yourdomain.com
+    
+    # SSL Configuration
+    SSLEngine on
+    SSLCertificateFile /path/to/your/certificate.crt
+    SSLCertificateKeyFile /path/to/your/private.key
+    SSLCertificateChainFile /path/to/your/chain.crt
+    
+    # Security headers
+    Header always set X-Frame-Options DENY
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    
+    # Enable mod_proxy and mod_proxy_http
+    ProxyPreserveHost On
+    ProxyRequests Off
+    
+    # Proxy to Bun/Node.js application
+    ProxyPass / http://localhost:5000/
+    ProxyPassReverse / http://localhost:5000/
+    
+    # WebSocket support
+    ProxyPass /ws/ ws://localhost:5000/ws/
+    ProxyPassReverse /ws/ ws://localhost:5000/ws/
+    
+    # Static file caching
+    <LocationMatch "\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$">
+        ExpiresActive On
+        ExpiresDefault "access plus 1 year"
+        Header set Cache-Control "public, immutable"
+    </LocationMatch>
+    
+    # File upload size limit
+    LimitRequestBody 52428800
+    
+    # Error and access logs
+    ErrorLog ${APACHE_LOG_DIR}/permit-management-error.log
+    CustomLog ${APACHE_LOG_DIR}/permit-management-access.log combined
+</VirtualHost>
+```
+
+### Required Apache2 Modules
+
+Enable the necessary Apache2 modules:
+
+```bash
+# Enable required modules
+sudo a2enmod ssl
+sudo a2enmod rewrite
+sudo a2enmod proxy
+sudo a2enmod proxy_http
+sudo a2enmod proxy_wstunnel
+sudo a2enmod headers
+sudo a2enmod expires
+
+# Enable the site
+sudo a2ensite permit-management.conf
+
+# Test configuration
+sudo apache2ctl configtest
+
+# Restart Apache2
+sudo systemctl restart apache2
+```
+
+## Nginx Configuration (Alternative)
 
 ```nginx
 server {
