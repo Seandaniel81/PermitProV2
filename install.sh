@@ -7,17 +7,19 @@ set -e
 echo "🏗️  Installing Permit Management System for Independent Hosting"
 echo "=============================================================="
 
-# Check if Node.js is installed and version is adequate
-if ! command -v node &> /dev/null; then
-    echo "❌ Node.js is not installed. Please install Node.js 18+ first."
-    exit 1
+# Check if Bun is installed
+if ! command -v bun &> /dev/null; then
+    echo "❌ Bun is not installed. Installing Bun..."
+    curl -fsSL https://bun.sh/install | bash
+    source ~/.bashrc || source ~/.zshrc || true
+    
+    if ! command -v bun &> /dev/null; then
+        echo "❌ Bun installation failed. Please install manually from https://bun.sh"
+        exit 1
+    fi
 fi
 
-NODE_VERSION=$(node -v | cut -d'.' -f1 | cut -d'v' -f2)
-if [ "$NODE_VERSION" -lt 18 ]; then
-    echo "❌ Node.js version 18+ is required. Current version: $(node -v)"
-    exit 1
-fi
+echo "✅ Bun found: $(bun --version)"
 
 # Check if PostgreSQL is installed
 if ! command -v psql &> /dev/null; then
@@ -27,7 +29,7 @@ fi
 
 # Install dependencies
 echo "📦 Installing dependencies..."
-npm install
+bun install
 
 # Create necessary directories
 echo "📁 Creating directories..."
@@ -86,14 +88,14 @@ echo "✅ DATABASE_URL configured: ${DATABASE_URL}"
 
 # Build the application
 echo "🔨 Building application..."
-npm run build
+bun run build
 
 # Setup database
 echo "🗄️  Setting up database..."
 if [ -f scripts/setup-database.ts ]; then
-    npx tsx scripts/setup-database.ts
+    bun run scripts/setup-database.ts
 else
-    echo "⚠️  Database setup script not found. Please run 'npm run db:push' manually after installation."
+    echo "⚠️  Database setup script not found. Please run 'bun run db:push' manually after installation."
 fi
 
 echo ""
@@ -103,9 +105,9 @@ echo "Next steps:"
 echo "1. Review and customize settings in the application"
 echo "2. Configure SSL certificates for production"
 echo "3. Set up reverse proxy (nginx/Apache)"
-echo "4. Start the application: npm start"
+echo "4. Start the application: bun start"
 echo ""
 echo "For production deployment with PM2:"
-echo "  npm install -g pm2"
+echo "  bun install -g pm2"
 echo "  pm2 start ecosystem.config.js"
 echo "  pm2 save && pm2 startup"

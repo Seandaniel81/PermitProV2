@@ -6,11 +6,19 @@ set -e
 echo "🚀 Quick Setup for Permit Management System"
 echo "============================================"
 
-# Check if Node.js is installed
-if ! command -v node &> /dev/null; then
-    echo "❌ Node.js is not installed. Please install Node.js 18+ first."
-    exit 1
+# Check if Bun is installed
+if ! command -v bun &> /dev/null; then
+    echo "❌ Bun is not installed. Installing Bun..."
+    curl -fsSL https://bun.sh/install | bash
+    source ~/.bashrc || source ~/.zshrc || true
+    
+    if ! command -v bun &> /dev/null; then
+        echo "❌ Bun installation failed. Please install manually from https://bun.sh"
+        exit 1
+    fi
 fi
+
+echo "✅ Bun found: $(bun --version)"
 
 # Get database URL from user
 read -p "Enter your PostgreSQL connection string: " DATABASE_URL
@@ -21,7 +29,7 @@ if [ -z "$DATABASE_URL" ]; then
 fi
 
 echo "📦 Installing dependencies..."
-npm install
+bun install
 
 echo "📁 Creating directories..."
 mkdir -p uploads logs backups
@@ -50,14 +58,14 @@ MAX_FILE_SIZE=10485760
 EOF
 
 echo "🔨 Building application..."
-npm run build
+bun run build
 
 echo "🗄️ Setting up database..."
 if [ -f scripts/setup-database.ts ]; then
-    npx tsx scripts/setup-database.ts
+    bun run scripts/setup-database.ts
 else
     echo "⚠️ Database setup script not found. Running db:push..."
-    npm run db:push
+    bun run db:push
 fi
 
 echo ""
@@ -66,10 +74,10 @@ echo ""
 echo "🎉 Your permit management system is ready!"
 echo ""
 echo "To start the application:"
-echo "  npm start"
+echo "  bun start"
 echo ""
 echo "For development mode:"
-echo "  npm run dev"
+echo "  bun run dev"
 echo ""
 echo "The application will be available at: http://localhost:5000"
 echo ""
