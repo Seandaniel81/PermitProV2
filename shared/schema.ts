@@ -6,7 +6,8 @@ import { z } from "zod";
 // User storage table.
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().notNull(),
-  email: varchar("email").unique(),
+  email: varchar("email").unique().notNull(),
+  passwordHash: varchar("password_hash"),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
@@ -18,6 +19,7 @@ export const users = pgTable("users", {
   rejectionReason: text("rejection_reason"),
   company: varchar("company"),
   phone: varchar("phone"),
+  lastLoginAt: timestamp("last_login_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

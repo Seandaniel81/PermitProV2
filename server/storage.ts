@@ -18,6 +18,7 @@ import {
 export interface IStorage {
   // User methods
   getUser(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
   updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
@@ -76,10 +77,12 @@ export class MemStorage implements IStorage {
 
   // User management methods (stub implementations)
   async getUser(id: string): Promise<User | undefined> { return undefined; }
+  async getUserByEmail(email: string): Promise<User | undefined> { return undefined; }
   async upsertUser(userData: UpsertUser): Promise<User> { 
     return { 
       id: '1', 
       email: null, 
+      passwordHash: null,
       firstName: null, 
       lastName: null, 
       profileImageUrl: null,
@@ -91,6 +94,7 @@ export class MemStorage implements IStorage {
       rejectionReason: null,
       company: null,
       phone: null,
+      lastLoginAt: null,
       createdAt: new Date(), 
       updatedAt: new Date() 
     }; 
