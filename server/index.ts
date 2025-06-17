@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { seedDatabase } from "./seed-database";
 import { config } from "./config";
+import { setupAuth } from "./auth";
 
 const app = express();
 app.use(express.json());

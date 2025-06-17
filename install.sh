@@ -49,11 +49,13 @@ if [ ! -f .env ]; then
 # Database Configuration
 DATABASE_URL=postgresql://username:password@localhost:5432/permits_db
 
-# Authentication
+# Authentication - OpenID Connect Configuration
 SESSION_SECRET=$SESSION_SECRET
-REPL_ID=standalone
-ISSUER_URL=https://replit.com/oidc
-REPLIT_DOMAINS=localhost
+OIDC_ISSUER_URL=https://accounts.google.com
+OIDC_CLIENT_ID=your-client-id-from-oauth-provider
+OIDC_CLIENT_SECRET=your-client-secret-from-oauth-provider
+ALLOWED_DOMAINS=localhost
+AUTO_APPROVE_USERS=false
 
 # Application Settings
 NODE_ENV=production
