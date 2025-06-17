@@ -1,8 +1,10 @@
 module.exports = {
   apps: [{
     name: 'permit-management-system',
-    script: 'server/index.js',
-    instances: 1,
+    script: 'dist/index.js',
+    interpreter: 'bun',
+    instances: 'max',
+    exec_mode: 'cluster',
     autorestart: true,
     watch: false,
     max_memory_restart: '1G',

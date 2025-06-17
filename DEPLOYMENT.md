@@ -114,10 +114,10 @@ The application includes built-in backup functionality:
 
 ```bash
 # Run backup script
-node scripts/backup-database.js
+bun run scripts/backup-database.js
 
 # Restore from backup
-node scripts/restore-database.js backup_filename.sql
+bun run scripts/restore-database.js backup_filename.sql
 ```
 
 ### Manual PostgreSQL Backup
@@ -254,10 +254,10 @@ curl http://localhost:5000/api/health
 
 ```bash
 # Update dependencies
-npm update
+bun update
 
 # Rebuild application
-npm run build
+bun run build
 
 # Restart PM2 processes
 pm2 restart all
