@@ -71,11 +71,18 @@ EOF
 fi
 
 # Validate DATABASE_URL is set
-source .env
+if [ -f .env ]; then
+    export $(grep -v '^#' .env | xargs)
+fi
+
 if [ -z "$DATABASE_URL" ] || [ "$DATABASE_URL" = "postgresql://username:password@localhost:5432/permits_db" ]; then
     echo "❌ Please configure DATABASE_URL in .env file with your actual database credentials."
+    echo "   Example: DATABASE_URL=\"postgresql://postgres:204874@localhost:5432/permits_db\""
+    echo "   Current DATABASE_URL: ${DATABASE_URL:-'not set'}"
     exit 1
 fi
+
+echo "✅ DATABASE_URL configured: ${DATABASE_URL}"
 
 # Build the application
 echo "🔨 Building application..."
