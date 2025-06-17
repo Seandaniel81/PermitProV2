@@ -88,7 +88,9 @@ export class MemStorage implements IStorage {
       approvalStatus: 'approved',
       approvedBy: null,
       approvedAt: null,
-      lastLoginAt: null,
+      rejectionReason: null,
+      company: null,
+      phone: null,
       createdAt: new Date(), 
       updatedAt: new Date() 
     }; 
