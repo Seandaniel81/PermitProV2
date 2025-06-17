@@ -14,6 +14,8 @@ import UserManagement from "@/pages/user-management";
 import SystemStatus from "@/pages/system-status";
 import PendingApproval from "@/pages/pending-approval";
 import Landing from "@/pages/landing";
+import Login from "@/pages/login";
+import Admin from "@/pages/admin";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -40,7 +42,10 @@ function Router() {
   return (
     <Switch>
       {!isAuthenticated ? (
-        <Route path="/" component={Landing} />
+        <>
+          <Route path="/login" component={Login} />
+          <Route path="/" component={Landing} />
+        </>
       ) : (
         <>
           <Route path="/" component={Dashboard} />
@@ -49,6 +54,7 @@ function Router() {
           <Route path="/package/:id/edit" component={PackageEdit} />
           <Route path="/settings" component={Settings} />
           <Route path="/user-management" component={UserManagement} />
+          <Route path="/admin" component={Admin} />
           <Route path="/system-status" component={SystemStatus} />
         </>
       )}

@@ -108,14 +108,15 @@ export async function setupLocalAuth(app: Express) {
       failureFlash: false
     }),
     (req, res) => {
+      const user = req.user as any;
       res.json({ 
         success: true, 
         user: {
-          id: req.user?.id,
-          email: req.user?.email,
-          firstName: req.user?.firstName,
-          lastName: req.user?.lastName,
-          role: req.user?.role
+          id: user?.id,
+          email: user?.email,
+          firstName: user?.firstName,
+          lastName: user?.lastName,
+          role: user?.role
         }
       });
     }
