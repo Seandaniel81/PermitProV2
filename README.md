@@ -111,7 +111,30 @@ docker build -t permit-management .
 docker run -p 5000:5000 -e DATABASE_URL=your_db_url permit-management
 ```
 
-### Reverse Proxy Setup (Nginx)
+### Reverse Proxy Setup
+
+#### Apache2 Configuration
+
+```apache
+<VirtualHost *:443>
+    ServerName yourdomain.com
+    
+    # SSL Configuration
+    SSLEngine on
+    SSLCertificateFile /path/to/your/certificate.crt
+    SSLCertificateKeyFile /path/to/your/private.key
+    
+    # Proxy configuration
+    ProxyPreserveHost On
+    ProxyRequests Off
+    ProxyPass / http://localhost:5000/
+    ProxyPassReverse / http://localhost:5000/
+    
+    # Enable required modules: ssl, proxy, proxy_http
+</VirtualHost>
+```
+
+#### Nginx Configuration (Alternative)
 
 ```nginx
 server {
