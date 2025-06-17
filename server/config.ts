@@ -61,9 +61,12 @@ const configSchema = z.object({
   
   // Authentication configuration
   auth: z.object({
-    issuerUrl: z.string().url().default('https://replit.com/oidc'),
-    replId: z.string().min(1).default('standalone'),
+    issuerUrl: z.string().url().default('https://accounts.google.com'),
+    clientId: z.string().min(1).default('your-client-id'),
+    clientSecret: z.string().min(1).default('your-client-secret'),
     domains: z.array(z.string()).min(1).default(['localhost']),
+    autoApprove: z.boolean().default(false),
+    logoutUrl: z.string().optional(),
   }),
 });
 
@@ -126,9 +129,12 @@ export function loadConfig(): Config {
     },
     
     auth: {
-      issuerUrl: process.env.ISSUER_URL || 'https://replit.com/oidc',
-      replId: process.env.REPL_ID || 'standalone',
-      domains: process.env.REPLIT_DOMAINS?.split(',') || ['localhost'],
+      issuerUrl: process.env.OIDC_ISSUER_URL || 'https://accounts.google.com',
+      clientId: process.env.OIDC_CLIENT_ID || 'your-client-id',
+      clientSecret: process.env.OIDC_CLIENT_SECRET || 'your-client-secret',
+      domains: process.env.ALLOWED_DOMAINS?.split(',') || ['localhost'],
+      autoApprove: process.env.AUTO_APPROVE_USERS === 'true',
+      logoutUrl: process.env.LOGOUT_REDIRECT_URL,
     },
   };
 
