@@ -84,7 +84,52 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  const oidcConfig = await getOidcConfig();
+  // Development bypass for OIDC issues
+  if (config.server.environment === 'development' && 
+      (config.auth.clientId === 'your-client-id' || config.auth.clientSecret === 'your-client-secret')) {
+    console.warn("⚠️  DEVELOPMENT MODE: OIDC not configured, using development bypass");
+    
+    app.get("/api/dev-login", async (req, res) => {
+      const devUser = await storage.getUser("dev-admin") || await storage.upsertUser({
+        id: "dev-admin",
+        email: "dev@localhost",
+        firstName: "Development",
+        lastName: "Admin",
+        role: "admin",
+        approvalStatus: "approved",
+        isActive: true
+      });
+      
+      req.login({ claims: { sub: "dev-admin", email: "dev@localhost" }, expires_at: Math.floor(Date.now() / 1000) + 86400 }, (err) => {
+        if (err) return res.status(500).json({ error: "Login failed" });
+        res.redirect("/");
+      });
+    });
+    
+    app.get("/api/login", (req, res) => {
+      res.redirect("/api/dev-login");
+    });
+    
+    app.get("/api/logout", (req, res) => {
+      req.logout(() => {
+        req.session.destroy((err) => {
+          if (err) console.error("Session destruction error:", err);
+          res.clearCookie('connect.sid');
+          res.redirect("/");
+        });
+      });
+    });
+    
+    return;
+  }
+
+  let oidcConfig;
+  try {
+    oidcConfig = await getOidcConfig();
+  } catch (error) {
+    console.error("Failed to get OIDC configuration:", error);
+    throw new Error("OIDC configuration failed. Please check your OIDC_ISSUER_URL and credentials.");
+  }
 
   const verify: VerifyFunction = async (
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
@@ -130,11 +175,17 @@ export async function setupAuth(app: Express) {
 
   app.get("/api/logout", (req, res) => {
     req.logout(() => {
-      if (config.auth.logoutUrl) {
-        res.redirect(config.auth.logoutUrl);
-      } else {
-        res.redirect("/");
-      }
+      req.session.destroy((err) => {
+        if (err) {
+          console.error("Session destruction error:", err);
+        }
+        res.clearCookie('connect.sid');
+        if (config.auth.logoutUrl) {
+          res.redirect(config.auth.logoutUrl);
+        } else {
+          res.redirect("/");
+        }
+      });
     });
   });
 }
