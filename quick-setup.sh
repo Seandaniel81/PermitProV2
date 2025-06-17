@@ -43,10 +43,10 @@ DATABASE_URL=$DATABASE_URL
 # Authentication - OpenID Connect Configuration
 SESSION_SECRET=$SESSION_SECRET
 OIDC_ISSUER_URL=https://accounts.google.com
-OIDC_CLIENT_ID=your-client-id-from-oauth-provider
-OIDC_CLIENT_SECRET=your-client-secret-from-oauth-provider
-ALLOWED_DOMAINS=localhost
-AUTO_APPROVE_USERS=false
+OIDC_CLIENT_ID=625523063326-hnq3mak1r35pfv739fa7ppcekthqas0a.apps.googleusercontent.com
+OIDC_CLIENT_SECRET=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
+ALLOWED_DOMAINS=localhost,swonger.tplinkdns.com
+AUTO_APPROVE_USERS=true
 
 # Application Settings
 NODE_ENV=production
