@@ -77,7 +77,21 @@ export class MemStorage implements IStorage {
   // User management methods (stub implementations)
   async getUser(id: string): Promise<User | undefined> { return undefined; }
   async upsertUser(userData: UpsertUser): Promise<User> { 
-    return { id: '1', email: '', firstName: '', lastName: '', role: 'user', isActive: true, createdAt: new Date(), updatedAt: new Date() }; 
+    return { 
+      id: '1', 
+      email: null, 
+      firstName: null, 
+      lastName: null, 
+      profileImageUrl: null,
+      role: 'user', 
+      isActive: true, 
+      approvalStatus: 'approved',
+      approvedBy: null,
+      approvedAt: null,
+      lastLoginAt: null,
+      createdAt: new Date(), 
+      updatedAt: new Date() 
+    }; 
   }
   async getAllUsers(): Promise<User[]> { return []; }
   async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> { return undefined; }
