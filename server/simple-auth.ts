@@ -133,6 +133,7 @@ export function setupSimpleAuth(app: express.Express) {
 
       // Create user
       const userData = {
+        id: `user-${Date.now()}`,
         email,
         passwordHash,
         firstName,
