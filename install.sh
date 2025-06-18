@@ -54,9 +54,9 @@ DATABASE_URL=postgresql://username:password@localhost:5432/permits_db
 # Authentication - OpenID Connect Configuration (Google OAuth)
 SESSION_SECRET=$SESSION_SECRET
 OIDC_ISSUER_URL=https://accounts.google.com
-OIDC_CLIENT_ID=625523063326-hnq3mak1r35pfv739fa7ppcekthqas0a.apps.googleusercontent.com
-OIDC_CLIENT_SECRET=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
-ALLOWED_DOMAINS=localhost,swonger.tplinkdns.com
+OIDC_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+OIDC_CLIENT_SECRET=your-google-client-secret
+ALLOWED_DOMAINS=localhost,yourdomain.com
 AUTO_APPROVE_USERS=true
 
 # Application Settings
