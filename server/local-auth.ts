@@ -184,7 +184,7 @@ export async function setupLocalAuth(app: Express) {
         phone,
         approvalStatus: 'approved',
         isActive: true,
-        approvedBy: req.user?.id,
+        approvedBy: (req.user as any)?.id,
         approvedAt: new Date()
       });
 
@@ -208,7 +208,7 @@ export async function setupLocalAuth(app: Express) {
   app.post('/api/change-password', isAuthenticated, async (req, res) => {
     try {
       const { currentPassword, newPassword } = req.body;
-      const userId = req.user?.id;
+      const userId = (req.user as any)?.id;
 
       if (!currentPassword || !newPassword) {
         return res.status(400).json({ error: 'Current and new passwords are required' });
@@ -274,7 +274,7 @@ export const isAuthenticated: RequestHandler = (req, res, next) => {
 };
 
 export const isAdmin: RequestHandler = (req, res, next) => {
-  if (req.user?.role === 'admin') {
+  if ((req.user as any)?.role === 'admin') {
     return next();
   }
   res.status(403).json({ message: "Forbidden: Admin access required" });
