@@ -11,4 +11,4 @@ export NODE_ENV=development
 export PORT=5000
 
 # Start the application
-npm run dev
+bun run dev
