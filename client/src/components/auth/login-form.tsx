@@ -41,6 +41,8 @@ export function LoginForm({ onSuccess, onRegisterClick }: LoginFormProps) {
     setLoginError(null);
 
     try {
+      console.log("Attempting login with:", { email: data.email });
+      
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
@@ -50,22 +52,36 @@ export function LoginForm({ onSuccess, onRegisterClick }: LoginFormProps) {
         body: JSON.stringify(data),
       });
 
+      console.log("Login response status:", response.status);
+      console.log("Login response headers:", Object.fromEntries(response.headers.entries()));
+
       if (response.ok) {
         const result = await response.json();
+        console.log("Login result:", result);
+        
         if (result.success) {
           // Invalidate auth queries to force refetch of user data
           await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-          // Redirect to dashboard after successful login
-          window.location.href = "/";
+          // Small delay to ensure cache invalidation completes
+          setTimeout(() => {
+            window.location.href = "/";
+          }, 100);
         } else {
           setLoginError(result.message || "Login failed");
         }
       } else {
-        const error = await response.json();
-        setLoginError(error.message || "Login failed");
+        const errorText = await response.text();
+        console.error("Login failed with status:", response.status, "Response:", errorText);
+        try {
+          const errorJson = JSON.parse(errorText);
+          setLoginError(errorJson.message || "Login failed");
+        } catch {
+          setLoginError(`Login failed (${response.status}): ${errorText}`);
+        }
       }
     } catch (error) {
-      setLoginError("Network error. Please try again.");
+      console.error("Login network error:", error);
+      setLoginError(`Network error: ${error instanceof Error ? error.message : 'Connection failed'}`);
     } finally {
       setIsLoading(false);
     }
