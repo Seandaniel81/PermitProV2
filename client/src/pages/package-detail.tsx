@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Header } from "@/components/layout/header";
-import { DocumentChecklist } from "@/components/document-checklist";
+import { DocumentChecklistNew as DocumentChecklist } from "@/components/document-checklist-new";
 import { PackageStatusUpdater } from "@/components/package-status-updater";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";

@@ -16,6 +16,7 @@ import PendingApproval from "@/pages/pending-approval";
 import Landing from "@/pages/landing";
 import Login from "@/pages/login";
 import Admin from "@/pages/admin";
+import Reports from "@/pages/reports";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -55,6 +56,7 @@ function Router() {
           <Route path="/settings" component={Settings} />
           <Route path="/user-management" component={UserManagement} />
           <Route path="/admin" component={Admin} />
+          <Route path="/reports" component={Reports} />
           <Route path="/system-status" component={SystemStatus} />
         </>
       )}
