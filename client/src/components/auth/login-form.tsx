@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Eye, EyeOff, LogIn } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address"),
@@ -25,6 +26,7 @@ export function LoginForm({ onSuccess, onRegisterClick }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const queryClient = useQueryClient();
 
   const {
     register,
@@ -51,6 +53,8 @@ export function LoginForm({ onSuccess, onRegisterClick }: LoginFormProps) {
       if (response.ok) {
         const result = await response.json();
         if (result.success) {
+          // Invalidate auth queries to force refetch of user data
+          await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
           // Redirect to dashboard after successful login
           window.location.href = "/";
         } else {
