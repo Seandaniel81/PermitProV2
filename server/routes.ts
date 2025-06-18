@@ -2,7 +2,7 @@ import type { Express } from "express";
 import express from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupLocalAuth, isAuthenticated, isAdmin } from "./local-auth";
+import { setupSimpleAuth, isAuthenticated, isAdmin } from "./simple-auth";
 import { healthMonitor } from "./health-monitor";
 import { config } from "./config";
 import multer from "multer";
@@ -56,18 +56,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Auth middleware
-  await setupLocalAuth(app);
+  setupSimpleAuth(app);
 
-  // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
-    try {
-      const user = req.user;
-      res.json(user);
-    } catch (error) {
-      console.error("Error fetching user:", error);
-      res.status(500).json({ message: "Failed to fetch user" });
-    }
-  });
+  // Auth routes are handled by simple-auth.ts
 
   // Admin routes
   app.get('/api/admin/users', isAdmin, async (req, res) => {
