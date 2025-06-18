@@ -43,11 +43,7 @@ fi
 # Install dependencies if needed
 if [ ! -d "node_modules" ]; then
     echo "📦 Installing dependencies..."
-    if command -v bun &> /dev/null; then
-        bun install
-    else
-        npm install
-    fi
+    npm install
 fi
 
 # Create local database if it doesn't exist
@@ -56,11 +52,7 @@ createdb permits_local 2>/dev/null || echo "Database already exists"
 
 # Push database schema
 echo "📊 Updating database schema..."
-if command -v bun &> /dev/null; then
-    bun run db:push
-else
-    npm run db:push
-fi
+npm run db:push
 
 # Start the development server
 echo "🌟 Starting development server..."
@@ -68,8 +60,4 @@ echo "📍 Application will be available at: http://localhost:5000"
 echo "👤 Admin credentials: admin@system.local / admin123"
 echo ""
 
-if command -v bun &> /dev/null; then
-    bun run dev
-else
-    npm run dev
-fi
+npm run dev
