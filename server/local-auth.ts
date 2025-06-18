@@ -24,8 +24,9 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: config.server.environment === "production",
+      secure: false, // Allow cookies over HTTP for development
       maxAge: sessionTtl,
+      sameSite: 'lax',
     },
   });
 }
@@ -103,7 +104,7 @@ export async function setupLocalAuth(app: Express) {
   });
 
   // Login route
-  app.post('/api/login', (req, res, next) => {
+  app.post('/api/auth/login', (req, res, next) => {
     passport.authenticate('local', (err: any, user: any, info: any) => {
       if (err) {
         return res.status(500).json({ 
