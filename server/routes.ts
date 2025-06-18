@@ -58,6 +58,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   setupSimpleAuth(app);
 
+  // Serve uploaded files
+  app.get('/api/files/:filename', isAuthenticated, (req, res) => {
+    try {
+      const filename = req.params.filename;
+      const filePath = path.join(uploadsDir, filename);
+      
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: 'File not found' });
+      }
+
+      // Get file stats
+      const stats = fs.statSync(filePath);
+      const fileExtension = path.extname(filename).toLowerCase();
+      
+      // Set appropriate content type
+      let contentType = 'application/octet-stream';
+      if (fileExtension === '.pdf') {
+        contentType = 'application/pdf';
+      } else if (['.jpg', '.jpeg'].includes(fileExtension)) {
+        contentType = 'image/jpeg';
+      } else if (fileExtension === '.png') {
+        contentType = 'image/png';
+      } else if (fileExtension === '.gif') {
+        contentType = 'image/gif';
+      }
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Length', stats.size);
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      
+      // Stream the file
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
+    } catch (error) {
+      console.error('Error serving file:', error);
+      res.status(500).json({ message: 'Error serving file' });
+    }
+  });
+
   // Auth routes are handled by simple-auth.ts
 
   // Admin routes

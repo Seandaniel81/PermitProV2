@@ -12,6 +12,7 @@ import { useForm } from "react-hook-form";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatDate } from "@/lib/types";
+import { DocumentViewer } from "@/components/document-viewer";
 import type { PackageDocument } from "@/lib/types";
 
 interface DocumentChecklistProps {
