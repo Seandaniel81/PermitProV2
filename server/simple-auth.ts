@@ -111,6 +111,52 @@ export function setupSimpleAuth(app: express.Express) {
     }
   });
 
+  // Register route
+  app.post('/api/auth/register', async (req, res) => {
+    try {
+      const { email, password, firstName, lastName, company, phone } = req.body;
+      
+      console.log('Registration attempt for:', email);
+      
+      if (!email || !password || !firstName || !lastName) {
+        return res.status(400).json({ error: 'Email, password, first name, and last name are required' });
+      }
+
+      // Check if user already exists
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(409).json({ error: 'User already exists' });
+      }
+
+      // Hash password
+      const passwordHash = await hashPassword(password);
+
+      // Create user
+      const userData = {
+        email,
+        passwordHash,
+        firstName,
+        lastName,
+        company: company || '',
+        phone: phone || '',
+        role: 'user' as const,
+        approvalStatus: 'pending' as const
+      };
+
+      const user = await storage.upsertUser(userData);
+      console.log('User registered successfully:', email);
+      
+      res.json({ 
+        success: true, 
+        message: 'Registration successful. Please wait for admin approval.',
+        user: { id: user.id, email: user.email, approvalStatus: user.approvalStatus }
+      });
+    } catch (error) {
+      console.error('Registration error:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
   // Logout route
   app.post('/api/auth/logout', (req, res) => {
     req.session.destroy((err) => {
