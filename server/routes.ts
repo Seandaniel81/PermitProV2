@@ -213,14 +213,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/users/:id/reject', isAuthenticated, isAdmin, async (req: any, res) => {
+  app.post('/api/users/:id/reject', async (req: any, res) => {
     try {
       const { id } = req.params;
       const { reason } = req.body;
       
       const updatedUser = await storage.updateUser(id, {
         approvalStatus: 'rejected',
-        approvedBy: req.dbUser.id,
+        approvedBy: 'standalone-user',
         approvedAt: new Date(),
         rejectionReason: reason || 'No reason provided',
       });
@@ -235,7 +235,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/users/:id', isAuthenticated, isAdmin, async (req, res) => {
+  app.put('/api/users/:id', async (req, res) => {
     try {
       const { id } = req.params;
       const updates = req.body;
@@ -569,8 +569,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // System status endpoint (admin only)
-  app.get('/api/system/status', isAdmin, async (req, res) => {
+  // Network file sharing endpoints
+  app.get('/api/network/share/:packageId', async (req, res) => {
+    try {
+      const packageId = parseInt(req.params.packageId);
+      if (isNaN(packageId)) {
+        return res.status(400).json({ message: "Invalid package ID" });
+      }
+
+      const packageWithDocuments = await storage.getPackageWithDocuments(packageId);
+      if (!packageWithDocuments) {
+        return res.status(404).json({ message: "Package not found" });
+      }
+
+      // Create shareable package info with file URLs
+      const shareablePackage = {
+        ...packageWithDocuments,
+        documents: packageWithDocuments.documents.map(doc => ({
+          ...doc,
+          fileUrl: doc.fileName ? `/api/files/${doc.fileName}` : null
+        })),
+        shareUrl: `${req.protocol}://${req.get('host')}/api/network/share/${packageId}`,
+        accessTime: new Date().toISOString()
+      };
+
+      res.json(shareablePackage);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to create network share" });
+    }
+  });
+
+  // List all shared packages for network discovery
+  app.get('/api/network/packages', async (req, res) => {
+    try {
+      const packages = await storage.getAllPackages();
+      const networkPackages = packages.map(pkg => ({
+        id: pkg.id,
+        projectName: pkg.projectName,
+        status: pkg.status,
+        permitType: pkg.permitType,
+        totalDocuments: pkg.totalDocuments,
+        completedDocuments: pkg.completedDocuments,
+        progressPercentage: pkg.progressPercentage,
+        shareUrl: `${req.protocol}://${req.get('host')}/api/network/share/${pkg.id}`,
+        lastUpdated: pkg.updatedAt
+      }));
+
+      res.json({
+        packages: networkPackages,
+        serverInfo: {
+          host: req.get('host'),
+          timestamp: new Date().toISOString(),
+          totalPackages: packages.length
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to list network packages" });
+    }
+  });
+
+  // Bulk download endpoint for network sharing
+  app.get('/api/network/download/:packageId', async (req, res) => {
+    try {
+      const packageId = parseInt(req.params.packageId);
+      if (isNaN(packageId)) {
+        return res.status(400).json({ message: "Invalid package ID" });
+      }
+
+      const packageWithDocuments = await storage.getPackageWithDocuments(packageId);
+      if (!packageWithDocuments) {
+        return res.status(404).json({ message: "Package not found" });
+      }
+
+      // Create a simple JSON response with all file information
+      const downloadPackage = {
+        package: packageWithDocuments,
+        files: packageWithDocuments.documents
+          .filter(doc => doc.fileName)
+          .map(doc => ({
+            documentName: doc.documentName,
+            fileName: doc.fileName,
+            fileSize: doc.fileSize,
+            downloadUrl: `${req.protocol}://${req.get('host')}/api/files/${doc.fileName}`,
+            mimeType: doc.mimeType
+          })),
+        downloadInfo: {
+          packageName: packageWithDocuments.projectName,
+          totalFiles: packageWithDocuments.documents.filter(doc => doc.fileName).length,
+          generatedAt: new Date().toISOString()
+        }
+      };
+
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="package-${packageId}-files.json"`);
+      res.json(downloadPackage);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to create download package" });
+    }
+  });
+
+  // System status endpoint
+  app.get('/api/system/status', async (req, res) => {
     try {
       const health = await healthMonitor.checkHealth();
       const systemInfo = {
