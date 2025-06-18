@@ -1,257 +1,254 @@
-# Building Permit Package Management System
+# Permit Management System
 
-A comprehensive permit management system designed for independent hosting at home or business locations with complete database autonomy.
+A comprehensive building permit package management system for tracking assembly progress and storing packages until submission.
 
 ## Features
 
-- **Independent Database Storage**: Full PostgreSQL database with complete data ownership
-- **User Registration & Admin Approval**: Secure user management with administrator oversight
-- **Document Management**: Upload, organize, and track permit documents with file storage
-- **Package Tracking**: Complete permit package lifecycle management
-- **System Monitoring**: Built-in health monitoring and backup capabilities
-- **Multi-Environment Support**: Development, staging, and production configurations
+- **Package Management**: Create, edit, and track building permit packages
+- **Document Checklist**: Manage required documents for each permit type
+- **Status Tracking**: Monitor progress from draft to submission
+- **User Management**: Role-based access control for administrators and users
+- **Dashboard Analytics**: Overview of package statistics and progress
+- **File Upload**: Secure document storage and management
 
-## Quick Start
+## Requirements
 
-### Prerequisites
-- Node.js 18 or higher
-- PostgreSQL 12 or higher
-- 2GB+ available disk space
+- Bun runtime (or Node.js 18+)
+- PostgreSQL 12+
+- Standard PostgreSQL database (not serverless variants)
 
-### Installation
+## Quick Installation
 
-1. **Clone and Setup**
+Run the automated installation script:
+
+```bash
+chmod +x install.sh
+./install.sh
+```
+
+The script will:
+1. Check system requirements
+2. Install dependencies
+3. Create necessary directories
+4. Set up environment configuration
+5. Build the application
+6. Initialize the database
+
+## Manual Installation
+
+### 1. Clone and Install Dependencies
+
 ```bash
 git clone <repository-url>
 cd permit-management-system
-chmod +x scripts/install.sh
-./scripts/install.sh
+bun install
 ```
 
-2. **Configure Environment**
+### 2. Environment Setup
+
+Copy the environment template:
 ```bash
 cp .env.example .env
-# Edit .env with your database credentials
 ```
 
-3. **Initialize Database**
+Edit `.env` with your configuration:
 ```bash
-node scripts/setup-database.js
+# Database Configuration
+DATABASE_URL=postgresql://username:password@localhost:5432/permits_db
+
+# Authentication
+SESSION_SECRET=your-secure-session-secret-here
+
+# Application Settings
+NODE_ENV=production
+PORT=5000
 ```
 
-4. **Start Application**
+### 3. Database Setup
+
+Create your PostgreSQL database:
 ```bash
-npm start
+createdb permits_db
+```
+
+Push the schema and seed initial data:
+```bash
+bun run db:push
+bun run scripts/setup-database.ts
+```
+
+### 4. Build and Start
+
+```bash
+bun run build
+bun start
+```
+
+## Development
+
+For development with hot reload:
+```bash
+bun run dev
 ```
 
 The application will be available at `http://localhost:5000`
 
-## Independent Database Architecture
+## Production Deployment
 
-### Database Design
-- **PostgreSQL**: Primary database engine for data persistence
-- **Drizzle ORM**: Type-safe database operations and migrations
-- **Schema Management**: Automated table creation and updates
-- **Data Integrity**: Foreign key constraints and validation
+### Using PM2 (Recommended)
 
-### Storage Independence
-- **Local File Storage**: All document uploads stored locally
-- **Database Backup**: Automated and manual backup capabilities
-- **Data Portability**: Easy migration between environments
-- **No External Dependencies**: Complete system autonomy
-
-## System Administration
-
-### User Management
-- **Admin Approval**: All new users require administrator approval
-- **Role-Based Access**: Admin and user permission levels
-- **Account Status**: Pending, approved, and rejected user states
-- **Audit Trail**: User activity and approval tracking
-
-### Database Management
-
-#### Backup Database
 ```bash
-# Automated backup
-node scripts/backup-database.js
-
-# Manual backup with custom location
-pg_dump -h localhost -U username -d permits_db > backup.sql
-```
-
-#### Restore Database
-```bash
-# From backup file
-node scripts/restore-database.js ./backups/backup-file.sql
-
-# Manual restore
-psql -h localhost -U username -d permits_db < backup.sql
-```
-
-#### Schema Updates
-```bash
-# Push schema changes
-npm run db:push
-
-# View database structure
-npm run db:studio
-```
-
-### System Monitoring
-
-#### Health Endpoints
-- `GET /api/health` - System health status
-- `GET /api/system/status` - Detailed system information (admin only)
-- `POST /api/system/backup` - Create database backup (admin only)
-
-#### Monitoring Metrics
-- Database connectivity and response time
-- File system write permissions
-- Disk space utilization
-- Memory usage and system uptime
-
-## Deployment Options
-
-### Local Development
-```bash
-npm run dev
-```
-
-### Production with PM2
-```bash
-npm install -g pm2
+bun install -g pm2
 pm2 start ecosystem.config.js
 pm2 save
 pm2 startup
 ```
 
-### Docker Deployment
+### Using Docker
+
 ```bash
-docker-compose up -d
+docker build -t permit-management .
+docker run -p 5000:5000 -e DATABASE_URL=your_db_url permit-management
 ```
 
-### Systemd Service (Linux)
-```bash
-sudo cp scripts/permit-system.service /etc/systemd/system/
-sudo systemctl enable permit-system
-sudo systemctl start permit-system
+### Reverse Proxy Setup
+
+#### Apache2 Configuration
+
+```apache
+<VirtualHost *:443>
+    ServerName yourdomain.com
+    
+    # SSL Configuration
+    SSLEngine on
+    SSLCertificateFile /path/to/your/certificate.crt
+    SSLCertificateKeyFile /path/to/your/private.key
+    
+    # Proxy configuration
+    ProxyPreserveHost On
+    ProxyRequests Off
+    ProxyPass / http://localhost:5000/
+    ProxyPassReverse / http://localhost:5000/
+    
+    # Enable required modules: ssl, proxy, proxy_http
+</VirtualHost>
 ```
 
-## Security Features
+#### Nginx Configuration (Alternative)
 
-### Data Protection
-- **Session Management**: Secure user sessions with database storage
-- **File Upload Validation**: Restricted file types and size limits
-- **SQL Injection Prevention**: Parameterized queries and ORM protection
-- **Input Validation**: Comprehensive data validation using Zod schemas
+```nginx
+server {
+    listen 80;
+    server_name yourdomain.com;
+    
+    location / {
+        proxy_pass http://localhost:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
 
-### Access Control
-- **Authentication**: OpenID Connect integration
-- **Authorization**: Role-based access control
-- **Admin Privileges**: Restricted administrative functions
-- **Audit Logging**: User action tracking and monitoring
+## Database Schema
 
-## File Management
+The system uses the following main entities:
+- **Users**: System users with role-based access
+- **Permit Packages**: Building permit applications
+- **Package Documents**: Required documents for each package
+- **Settings**: System configuration
 
-### Document Storage
-- **Local Storage**: All files stored in `./uploads` directory
-- **File Types**: PDF, images, Word documents
-- **Size Limits**: Configurable file size restrictions
-- **Organization**: Automatic file organization by package
+## API Endpoints
 
-### Backup Strategy
-- **Database Backups**: Regular automated backups
-- **File Backups**: Include uploaded documents in backup strategy
-- **Retention Policy**: Configurable backup retention periods
-- **Restore Procedures**: Documented recovery processes
+### Authentication
+- `GET /api/auth/user` - Get current user
+- `POST /api/auth/login` - Login user
+- `POST /api/auth/logout` - Logout user
+
+### Packages
+- `GET /api/packages` - List all packages
+- `POST /api/packages` - Create new package
+- `GET /api/packages/:id` - Get package details
+- `PUT /api/packages/:id` - Update package
+- `DELETE /api/packages/:id` - Delete package
+
+### Documents
+- `GET /api/packages/:id/documents` - Get package documents
+- `POST /api/packages/:id/documents` - Add document to package
+- `PUT /api/documents/:id` - Update document
+- `POST /api/documents/:id/upload` - Upload document file
 
 ## Configuration
 
 ### Environment Variables
-```env
-# Database Configuration
-DATABASE_URL=postgresql://username:password@localhost:5432/permits_db
-PGHOST=localhost
-PGPORT=5432
-PGDATABASE=permits_db
-PGUSER=username
-PGPASSWORD=password
 
-# Application Settings
-NODE_ENV=production
-PORT=5000
-SESSION_SECRET=your-secure-session-secret
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DATABASE_URL` | PostgreSQL connection string | Required |
+| `SESSION_SECRET` | Session encryption key | Required |
+| `NODE_ENV` | Environment mode | `development` |
+| `PORT` | Server port | `5000` |
+| `UPLOAD_DIR` | File upload directory | `./uploads` |
+| `MAX_FILE_SIZE` | Max upload size in bytes | `10485760` |
 
-# File Upload Settings
-UPLOAD_DIR=./uploads
-MAX_FILE_SIZE=10485760
+### Authentication Setup
 
-# Backup Configuration
-BACKUP_DIR=./backups
-BACKUP_RETENTION_DAYS=30
-AUTO_BACKUP=true
-```
+The application uses OpenID Connect for authentication. You need to configure an OAuth provider:
 
-### Custom Configuration
-- **Upload Limits**: Adjust file size and type restrictions
-- **Backup Schedule**: Configure automatic backup frequency
-- **Security Settings**: Customize session timeout and security headers
-- **Performance Tuning**: Database connection pooling and caching
+1. **Quick Setup with Google:**
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create OAuth 2.0 credentials
+   - Set redirect URI: `https://yourdomain.com/api/callback`
+   - Update `.env` with your credentials
+
+2. **Configuration:**
+   ```bash
+   OIDC_ISSUER_URL=https://accounts.google.com
+   OIDC_CLIENT_ID=your-google-client-id
+   OIDC_CLIENT_SECRET=your-google-client-secret
+   ALLOWED_DOMAINS=yourdomain.com
+   ```
+
+3. **See `OIDC_SETUP.md` for detailed provider setup instructions**
+
+### Default Users
+
+After initial setup, the first user to log in becomes an administrator. Additional users require approval unless `AUTO_APPROVE_USERS=true` is set.
 
 ## Troubleshooting
 
-### Common Issues
+### Database Connection Issues
+```bash
+# Test database connection
+psql $DATABASE_URL -c "SELECT version();"
+```
 
-#### Database Connection Errors
-- Verify PostgreSQL is running
-- Check DATABASE_URL format
-- Confirm database exists and credentials are correct
-- Test connection with `psql`
+### Permission Issues
+```bash
+# Fix upload directory permissions
+chmod 755 uploads logs backups
+```
 
-#### File Upload Problems
-- Check uploads directory permissions
-- Verify disk space availability
-- Review file size and type restrictions
-- Examine server logs for errors
+### Build Issues
+```bash
+# Clear cache and rebuild
+rm -rf node_modules dist
+bun install
+bun run build
+```
 
-#### Performance Issues
-- Monitor database performance
-- Check available memory and CPU
-- Review disk I/O usage
-- Optimize database queries
+## Support
 
-### System Maintenance
-
-#### Regular Tasks
-- Database backups (automated)
-- Log file rotation
-- Disk space monitoring
-- Software updates
-- Security patches
-
-#### Performance Optimization
-- Database index maintenance
-- File system cleanup
-- Memory usage monitoring
-- Connection pool tuning
-
-## Support and Documentation
-
-### Getting Help
-- Review system logs for error messages
-- Check health monitoring endpoints
-- Verify configuration settings
-- Test database connectivity
-
-### Additional Resources
-- [DEPLOYMENT.md](./DEPLOYMENT.md) - Detailed deployment guide
-- [.env.example](./.env.example) - Configuration template
-- Health monitoring dashboard at `/api/system/status`
+For issues and support, please check the logs:
+- Application logs: `logs/combined.log`
+- Error logs: `logs/err.log`
+- PM2 logs: `pm2 logs`
 
 ## License
 
-This project is licensed under the MIT License. See LICENSE file for details.
-
----
-
-**Note**: This system is designed for complete independence from external services. All data remains under your control and can be hosted entirely on your own infrastructure.
+MIT License - see LICENSE file for details.

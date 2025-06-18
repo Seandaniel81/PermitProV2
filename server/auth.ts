@@ -1,29 +1,25 @@
 import * as client from "openid-client";
 import { Strategy, type VerifyFunction } from "openid-client/passport";
-
 import passport from "passport";
 import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
-
-if (!process.env.REPLIT_DOMAINS) {
-  throw new Error("Environment variable REPLIT_DOMAINS not provided");
-}
+import { config } from "./config";
 
 const getOidcConfig = memoize(
   async () => {
     return await client.discovery(
-      new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
-      process.env.REPL_ID!
+      new URL(config.auth.issuerUrl),
+      config.auth.clientId
     );
   },
   { maxAge: 3600 * 1000 }
 );
 
 export function getSession() {
-  const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
+  const sessionTtl = config.security.sessionMaxAge;
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
     conString: process.env.DATABASE_URL,
@@ -32,13 +28,13 @@ export function getSession() {
     tableName: "sessions",
   });
   return session({
-    secret: process.env.SESSION_SECRET || "permit-tracker-dev-secret-key-change-in-production",
+    secret: config.security.sessionSecret,
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: config.server.environment === "production",
       maxAge: sessionTtl,
     },
   });
@@ -54,30 +50,28 @@ function updateUserSession(
   user.expires_at = user.claims?.exp;
 }
 
-async function upsertUser(
-  claims: any,
-) {
+async function upsertUser(claims: any) {
   const existingUser = await storage.getUser(claims["sub"]);
   
   if (!existingUser) {
-    // New user - create with pending approval status
+    // New user - create with pending approval status unless auto-approval is enabled
     await storage.upsertUser({
       id: claims["sub"],
       email: claims["email"],
-      firstName: claims["first_name"],
-      lastName: claims["last_name"],
-      profileImageUrl: claims["profile_image_url"],
-      approvalStatus: "pending",
+      firstName: claims["given_name"] || claims["first_name"] || claims["name"]?.split(" ")[0] || "User",
+      lastName: claims["family_name"] || claims["last_name"] || claims["name"]?.split(" ").slice(1).join(" ") || "",
+      profileImageUrl: claims["picture"] || claims["profile_image_url"],
+      approvalStatus: config.auth.autoApprove ? "approved" : "pending",
       role: "user",
     });
   } else {
-    // Existing user - update profile info but keep approval status
+    // Existing user - update profile info but keep approval status and role
     await storage.upsertUser({
       id: claims["sub"],
       email: claims["email"],
-      firstName: claims["first_name"] || existingUser.firstName,
-      lastName: claims["last_name"] || existingUser.lastName,
-      profileImageUrl: claims["profile_image_url"] || existingUser.profileImageUrl,
+      firstName: claims["given_name"] || claims["first_name"] || existingUser.firstName,
+      lastName: claims["family_name"] || claims["last_name"] || existingUser.lastName,
+      profileImageUrl: claims["picture"] || claims["profile_image_url"] || existingUser.profileImageUrl,
       approvalStatus: existingUser.approvalStatus,
       role: existingUser.role,
     });
@@ -90,7 +84,52 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  const config = await getOidcConfig();
+  // Development bypass for OIDC issues
+  if (config.server.environment === 'development' && 
+      (config.auth.clientId === 'your-client-id' || config.auth.clientSecret === 'your-client-secret')) {
+    console.warn("⚠️  DEVELOPMENT MODE: OIDC not configured, using development bypass");
+    
+    app.get("/api/dev-login", async (req, res) => {
+      const devUser = await storage.getUser("dev-admin") || await storage.upsertUser({
+        id: "dev-admin",
+        email: "dev@localhost",
+        firstName: "Development",
+        lastName: "Admin",
+        role: "admin",
+        approvalStatus: "approved",
+        isActive: true
+      });
+      
+      req.login({ claims: { sub: "dev-admin", email: "dev@localhost" }, expires_at: Math.floor(Date.now() / 1000) + 86400 }, (err) => {
+        if (err) return res.status(500).json({ error: "Login failed" });
+        res.redirect("/");
+      });
+    });
+    
+    app.get("/api/login", (req, res) => {
+      res.redirect("/api/dev-login");
+    });
+    
+    app.get("/api/logout", (req, res) => {
+      req.logout(() => {
+        req.session.destroy((err) => {
+          if (err) console.error("Session destruction error:", err);
+          res.clearCookie('connect.sid');
+          res.redirect("/");
+        });
+      });
+    });
+    
+    return;
+  }
+
+  let oidcConfig;
+  try {
+    oidcConfig = await getOidcConfig();
+  } catch (error) {
+    console.error("Failed to get OIDC configuration:", error);
+    throw new Error("OIDC configuration failed. Please check your OIDC_ISSUER_URL and credentials.");
+  }
 
   const verify: VerifyFunction = async (
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
@@ -102,14 +141,13 @@ export async function setupAuth(app: Express) {
     verified(null, user);
   };
 
-  for (const domain of process.env
-    .REPLIT_DOMAINS!.split(",")) {
+  for (const domain of config.auth.domains) {
     const strategy = new Strategy(
       {
-        name: `replitauth:${domain}`,
-        config,
-        scope: "openid email profile offline_access",
-        callbackURL: `https://${domain}/api/callback`,
+        name: `oidc:${domain}`,
+        config: oidcConfig,
+        scope: "openid email profile",
+        callbackURL: `${config.server.environment === 'production' ? 'https' : 'http'}://${domain}/api/callback`,
       },
       verify,
     );
@@ -120,14 +158,16 @@ export async function setupAuth(app: Express) {
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   app.get("/api/login", (req, res, next) => {
-    passport.authenticate(`replitauth:${req.hostname}`, {
+    const strategyName = `oidc:${req.hostname}`;
+    passport.authenticate(strategyName, {
       prompt: "login consent",
-      scope: ["openid", "email", "profile", "offline_access"],
+      scope: ["openid", "email", "profile"],
     })(req, res, next);
   });
 
   app.get("/api/callback", (req, res, next) => {
-    passport.authenticate(`replitauth:${req.hostname}`, {
+    const strategyName = `oidc:${req.hostname}`;
+    passport.authenticate(strategyName, {
       successReturnToOrRedirect: "/",
       failureRedirect: "/api/login",
     })(req, res, next);
@@ -135,12 +175,17 @@ export async function setupAuth(app: Express) {
 
   app.get("/api/logout", (req, res) => {
     req.logout(() => {
-      res.redirect(
-        client.buildEndSessionUrl(config, {
-          client_id: process.env.REPL_ID!,
-          post_logout_redirect_uri: `${req.protocol}://${req.hostname}`,
-        }).href
-      );
+      req.session.destroy((err) => {
+        if (err) {
+          console.error("Session destruction error:", err);
+        }
+        res.clearCookie('connect.sid');
+        if (config.auth.logoutUrl) {
+          res.redirect(config.auth.logoutUrl);
+        } else {
+          res.redirect("/");
+        }
+      });
     });
   });
 }
@@ -158,6 +203,10 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     const dbUser = await storage.getUser(user.claims.sub);
     if (!dbUser) {
       return res.status(401).json({ message: "User not found" });
+    }
+    
+    if (!dbUser.isActive) {
+      return res.status(403).json({ message: "Account deactivated" });
     }
     
     if (dbUser.approvalStatus === "rejected") {
@@ -178,7 +227,6 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
       return res.status(403).json({ message: "Account not approved" });
     }
     
-    // Store user info in request for later use
     (req as any).dbUser = dbUser;
     return next();
   }
@@ -190,13 +238,12 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
   }
 
   try {
-    const config = await getOidcConfig();
-    const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
+    const oidcConfig = await getOidcConfig();
+    const tokenResponse = await client.refreshTokenGrant(oidcConfig, refreshToken);
     updateUserSession(user, tokenResponse);
     
-    // Re-check approval status after token refresh
     const dbUser = await storage.getUser(user.claims.sub);
-    if (!dbUser || dbUser.approvalStatus !== "approved") {
+    if (!dbUser || dbUser.approvalStatus !== "approved" || !dbUser.isActive) {
       return res.status(403).json({ message: "Account not approved" });
     }
     
@@ -216,7 +263,7 @@ export const isAdmin: RequestHandler = async (req, res, next) => {
   }
 
   const dbUser = await storage.getUser(user.claims.sub);
-  if (!dbUser || dbUser.role !== 'admin') {
+  if (!dbUser || dbUser.role !== 'admin' || !dbUser.isActive) {
     return res.status(403).json({ message: "Admin access required" });
   }
 

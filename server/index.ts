@@ -2,6 +2,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { seedDatabase } from "./seed-database";
+import { config } from "./config";
+import { setupAuth } from "./auth";
 
 const app = express();
 app.use(express.json());
@@ -48,7 +50,7 @@ app.use((req, res, next) => {
     const message = err.message || "Internal Server Error";
 
     res.status(status).json({ message });
-    throw err;
+    console.error("Error:", err);
   });
 
   // importantly only setup vite in development and after
@@ -60,13 +62,12 @@ app.use((req, res, next) => {
     serveStatic(app);
   }
 
-  // ALWAYS serve the app on port 5000
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = 5000;
+  // Use configured port or default to 5000
+  const port = config.server.port;
+  const host = config.server.host;
   server.listen({
     port,
-    host: "0.0.0.0",
+    host,
     reusePort: true,
   }, () => {
     log(`serving on port ${port}`);

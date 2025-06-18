@@ -1,8 +1,4 @@
-#!/usr/bin/env node
-
 import { execSync } from 'child_process';
-import fs from 'fs';
-import path from 'path';
 
 console.log('🏗️  Setting up independent database for permit management system...\n');
 
@@ -21,7 +17,7 @@ try {
   console.log('📊 Creating database tables...');
   execSync('npm run db:push', { stdio: 'inherit' });
   console.log('✅ Database tables created successfully');
-} catch (error) {
+} catch (error: any) {
   console.error('❌ Failed to create database tables:', error.message);
   process.exit(1);
 }
@@ -31,7 +27,7 @@ try {
   console.log('🌱 Seeding initial data...');
   execSync('npx tsx server/seed-database.ts', { stdio: 'inherit' });
   console.log('✅ Initial data seeded successfully');
-} catch (error) {
+} catch (error: any) {
   console.error('❌ Failed to seed initial data:', error.message);
   process.exit(1);
 }

@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import { randomBytes } from 'crypto';
+
+// Generate a secure session secret if none is provided
+function generateSecureSecret(): string {
+  return randomBytes(32).toString('hex');
+}
 
 // Configuration schema for validation
 const configSchema = z.object({
@@ -23,7 +29,7 @@ const configSchema = z.object({
   
   // Security configuration
   security: z.object({
-    sessionSecret: z.string().min(32),
+    sessionSecret: z.string().min(1).default('default-session-secret-change-in-production'),
     sessionMaxAge: z.number().int().min(1).default(7 * 24 * 60 * 60 * 1000), // 7 days
     cors: z.object({
       origin: z.string().or(z.array(z.string())).default('*'),
@@ -55,9 +61,12 @@ const configSchema = z.object({
   
   // Authentication configuration
   auth: z.object({
-    issuerUrl: z.string().url().default('https://replit.com/oidc'),
-    replId: z.string().min(1),
-    domains: z.array(z.string()).min(1),
+    issuerUrl: z.string().url().default('https://accounts.google.com'),
+    clientId: z.string().min(1).default('your-client-id'),
+    clientSecret: z.string().min(1).default('your-client-secret'),
+    domains: z.array(z.string()).min(1).default(['localhost']),
+    autoApprove: z.boolean().default(false),
+    logoutUrl: z.string().optional(),
   }),
 });
 
@@ -91,7 +100,7 @@ export function loadConfig(): Config {
     },
     
     security: {
-      sessionSecret: process.env.SESSION_SECRET || '',
+      sessionSecret: process.env.SESSION_SECRET || generateSecureSecret(),
       sessionMaxAge: parseInt(process.env.SESSION_MAX_AGE || (7 * 24 * 60 * 60 * 1000).toString()),
       cors: {
         origin: process.env.CORS_ORIGIN || '*',
@@ -120,9 +129,12 @@ export function loadConfig(): Config {
     },
     
     auth: {
-      issuerUrl: process.env.ISSUER_URL || 'https://replit.com/oidc',
-      replId: process.env.REPL_ID || '',
-      domains: process.env.REPLIT_DOMAINS?.split(',') || [],
+      issuerUrl: process.env.OIDC_ISSUER_URL || 'https://accounts.google.com',
+      clientId: process.env.OIDC_CLIENT_ID || 'your-client-id',
+      clientSecret: process.env.OIDC_CLIENT_SECRET || 'your-client-secret',
+      domains: process.env.ALLOWED_DOMAINS?.split(',') || ['localhost'],
+      autoApprove: process.env.AUTO_APPROVE_USERS === 'true',
+      logoutUrl: process.env.LOGOUT_REDIRECT_URL,
     },
   };
 

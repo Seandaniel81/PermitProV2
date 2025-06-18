@@ -254,17 +254,18 @@ var DEFAULT_BUILDING_PERMIT_DOCS = [
 ];
 
 // server/db.ts
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import ws from "ws";
-neonConfig.webSocketConstructor = ws;
+import { Pool } from "pg";
+import { drizzle } from "drizzle-orm/node-postgres";
 if (!process.env.DATABASE_URL) {
   throw new Error(
     "DATABASE_URL must be set. Did you forget to provision a database?"
   );
 }
-var pool = new Pool({ connectionString: process.env.DATABASE_URL });
-var db = drizzle({ client: pool, schema: schema_exports });
+var pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === "production" && !process.env.DATABASE_URL.includes("localhost") ? { rejectUnauthorized: false } : false
+});
+var db = drizzle(pool, { schema: schema_exports });
 
 // server/database-storage.ts
 import { eq, desc } from "drizzle-orm";
@@ -414,189 +415,20 @@ var DatabaseStorage = class {
 // server/storage.ts
 var storage = new DatabaseStorage();
 
-// server/replitAuth.ts
+// server/auth.ts
 import * as client from "openid-client";
 import { Strategy } from "openid-client/passport";
 import passport from "passport";
 import session from "express-session";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
-if (!process.env.REPLIT_DOMAINS) {
-  throw new Error("Environment variable REPLIT_DOMAINS not provided");
-}
-var getOidcConfig = memoize(
-  async () => {
-    return await client.discovery(
-      new URL(process.env.ISSUER_URL ?? "https://replit.com/oidc"),
-      process.env.REPL_ID
-    );
-  },
-  { maxAge: 3600 * 1e3 }
-);
-function getSession() {
-  const sessionTtl = 7 * 24 * 60 * 60 * 1e3;
-  const pgStore = connectPg(session);
-  const sessionStore = new pgStore({
-    conString: process.env.DATABASE_URL,
-    createTableIfMissing: false,
-    ttl: sessionTtl,
-    tableName: "sessions"
-  });
-  return session({
-    secret: process.env.SESSION_SECRET || "permit-tracker-dev-secret-key-change-in-production",
-    store: sessionStore,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      maxAge: sessionTtl
-    }
-  });
-}
-function updateUserSession(user, tokens) {
-  user.claims = tokens.claims();
-  user.access_token = tokens.access_token;
-  user.refresh_token = tokens.refresh_token;
-  user.expires_at = user.claims?.exp;
-}
-async function upsertUser(claims) {
-  const existingUser = await storage.getUser(claims["sub"]);
-  if (!existingUser) {
-    await storage.upsertUser({
-      id: claims["sub"],
-      email: claims["email"],
-      firstName: claims["first_name"],
-      lastName: claims["last_name"],
-      profileImageUrl: claims["profile_image_url"],
-      approvalStatus: "pending",
-      role: "user"
-    });
-  } else {
-    await storage.upsertUser({
-      id: claims["sub"],
-      email: claims["email"],
-      firstName: claims["first_name"] || existingUser.firstName,
-      lastName: claims["last_name"] || existingUser.lastName,
-      profileImageUrl: claims["profile_image_url"] || existingUser.profileImageUrl,
-      approvalStatus: existingUser.approvalStatus,
-      role: existingUser.role
-    });
-  }
-}
-async function setupAuth(app2) {
-  app2.set("trust proxy", 1);
-  app2.use(getSession());
-  app2.use(passport.initialize());
-  app2.use(passport.session());
-  const config2 = await getOidcConfig();
-  const verify = async (tokens, verified) => {
-    const user = {};
-    updateUserSession(user, tokens);
-    await upsertUser(tokens.claims());
-    verified(null, user);
-  };
-  for (const domain of process.env.REPLIT_DOMAINS.split(",")) {
-    const strategy = new Strategy(
-      {
-        name: `replitauth:${domain}`,
-        config: config2,
-        scope: "openid email profile offline_access",
-        callbackURL: `https://${domain}/api/callback`
-      },
-      verify
-    );
-    passport.use(strategy);
-  }
-  passport.serializeUser((user, cb) => cb(null, user));
-  passport.deserializeUser((user, cb) => cb(null, user));
-  app2.get("/api/login", (req, res, next) => {
-    passport.authenticate(`replitauth:${req.hostname}`, {
-      prompt: "login consent",
-      scope: ["openid", "email", "profile", "offline_access"]
-    })(req, res, next);
-  });
-  app2.get("/api/callback", (req, res, next) => {
-    passport.authenticate(`replitauth:${req.hostname}`, {
-      successReturnToOrRedirect: "/",
-      failureRedirect: "/api/login"
-    })(req, res, next);
-  });
-  app2.get("/api/logout", (req, res) => {
-    req.logout(() => {
-      res.redirect(
-        client.buildEndSessionUrl(config2, {
-          client_id: process.env.REPL_ID,
-          post_logout_redirect_uri: `${req.protocol}://${req.hostname}`
-        }).href
-      );
-    });
-  });
-}
-var isAuthenticated = async (req, res, next) => {
-  const user = req.user;
-  if (!req.isAuthenticated() || !user.expires_at) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-  const now = Math.floor(Date.now() / 1e3);
-  if (now <= user.expires_at) {
-    const dbUser = await storage.getUser(user.claims.sub);
-    if (!dbUser) {
-      return res.status(401).json({ message: "User not found" });
-    }
-    if (dbUser.approvalStatus === "rejected") {
-      return res.status(403).json({
-        message: "Account access denied",
-        reason: dbUser.rejectionReason || "Your account has been rejected by an administrator"
-      });
-    }
-    if (dbUser.approvalStatus === "pending") {
-      return res.status(403).json({
-        message: "Account pending approval",
-        reason: "Your account is awaiting administrator approval"
-      });
-    }
-    if (dbUser.approvalStatus !== "approved") {
-      return res.status(403).json({ message: "Account not approved" });
-    }
-    req.dbUser = dbUser;
-    return next();
-  }
-  const refreshToken = user.refresh_token;
-  if (!refreshToken) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
-  }
-  try {
-    const config2 = await getOidcConfig();
-    const tokenResponse = await client.refreshTokenGrant(config2, refreshToken);
-    updateUserSession(user, tokenResponse);
-    const dbUser = await storage.getUser(user.claims.sub);
-    if (!dbUser || dbUser.approvalStatus !== "approved") {
-      return res.status(403).json({ message: "Account not approved" });
-    }
-    req.dbUser = dbUser;
-    return next();
-  } catch (error) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
-  }
-};
-var isAdmin = async (req, res, next) => {
-  const user = req.user;
-  if (!user?.claims?.sub) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-  const dbUser = await storage.getUser(user.claims.sub);
-  if (!dbUser || dbUser.role !== "admin") {
-    return res.status(403).json({ message: "Admin access required" });
-  }
-  req.dbUser = dbUser;
-  next();
-};
 
 // server/config.ts
 import { z } from "zod";
+import { randomBytes } from "crypto";
+function generateSecureSecret() {
+  return randomBytes(32).toString("hex");
+}
 var configSchema = z.object({
   // Database configuration
   database: z.object({
@@ -617,7 +449,7 @@ var configSchema = z.object({
   }),
   // Security configuration
   security: z.object({
-    sessionSecret: z.string().min(32),
+    sessionSecret: z.string().min(1).default("default-session-secret-change-in-production"),
     sessionMaxAge: z.number().int().min(1).default(7 * 24 * 60 * 60 * 1e3),
     // 7 days
     cors: z.object({
@@ -649,9 +481,12 @@ var configSchema = z.object({
   }),
   // Authentication configuration
   auth: z.object({
-    issuerUrl: z.string().url().default("https://replit.com/oidc"),
-    replId: z.string().min(1),
-    domains: z.array(z.string()).min(1)
+    issuerUrl: z.string().url().default("https://accounts.google.com"),
+    clientId: z.string().min(1).default("your-client-id"),
+    clientSecret: z.string().min(1).default("your-client-secret"),
+    domains: z.array(z.string()).min(1).default(["localhost"]),
+    autoApprove: z.boolean().default(false),
+    logoutUrl: z.string().optional()
   })
 });
 function loadConfig() {
@@ -677,7 +512,7 @@ function loadConfig() {
       environment: process.env.NODE_ENV || "development"
     },
     security: {
-      sessionSecret: process.env.SESSION_SECRET || "",
+      sessionSecret: process.env.SESSION_SECRET || generateSecureSecret(),
       sessionMaxAge: parseInt(process.env.SESSION_MAX_AGE || (7 * 24 * 60 * 60 * 1e3).toString()),
       cors: {
         origin: process.env.CORS_ORIGIN || "*",
@@ -703,9 +538,12 @@ function loadConfig() {
       backupInterval: parseInt(process.env.BACKUP_INTERVAL_HOURS || "24")
     },
     auth: {
-      issuerUrl: process.env.ISSUER_URL || "https://replit.com/oidc",
-      replId: process.env.REPL_ID || "",
-      domains: process.env.REPLIT_DOMAINS?.split(",") || []
+      issuerUrl: process.env.OIDC_ISSUER_URL || "https://accounts.google.com",
+      clientId: process.env.OIDC_CLIENT_ID || "your-client-id",
+      clientSecret: process.env.OIDC_CLIENT_SECRET || "your-client-secret",
+      domains: process.env.ALLOWED_DOMAINS?.split(",") || ["localhost"],
+      autoApprove: process.env.AUTO_APPROVE_USERS === "true",
+      logoutUrl: process.env.LOGOUT_REDIRECT_URL
     }
   };
   try {
@@ -716,6 +554,225 @@ function loadConfig() {
   }
 }
 var config = loadConfig();
+
+// server/auth.ts
+var getOidcConfig = memoize(
+  async () => {
+    return await client.discovery(
+      new URL(config.auth.issuerUrl),
+      config.auth.clientId
+    );
+  },
+  { maxAge: 3600 * 1e3 }
+);
+function getSession() {
+  const sessionTtl = config.security.sessionMaxAge;
+  const pgStore = connectPg(session);
+  const sessionStore = new pgStore({
+    conString: process.env.DATABASE_URL,
+    createTableIfMissing: false,
+    ttl: sessionTtl,
+    tableName: "sessions"
+  });
+  return session({
+    secret: config.security.sessionSecret,
+    store: sessionStore,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      secure: config.server.environment === "production",
+      maxAge: sessionTtl
+    }
+  });
+}
+function updateUserSession(user, tokens) {
+  user.claims = tokens.claims();
+  user.access_token = tokens.access_token;
+  user.refresh_token = tokens.refresh_token;
+  user.expires_at = user.claims?.exp;
+}
+async function upsertUser(claims) {
+  const existingUser = await storage.getUser(claims["sub"]);
+  if (!existingUser) {
+    await storage.upsertUser({
+      id: claims["sub"],
+      email: claims["email"],
+      firstName: claims["given_name"] || claims["first_name"] || claims["name"]?.split(" ")[0] || "User",
+      lastName: claims["family_name"] || claims["last_name"] || claims["name"]?.split(" ").slice(1).join(" ") || "",
+      profileImageUrl: claims["picture"] || claims["profile_image_url"],
+      approvalStatus: config.auth.autoApprove ? "approved" : "pending",
+      role: "user"
+    });
+  } else {
+    await storage.upsertUser({
+      id: claims["sub"],
+      email: claims["email"],
+      firstName: claims["given_name"] || claims["first_name"] || existingUser.firstName,
+      lastName: claims["family_name"] || claims["last_name"] || existingUser.lastName,
+      profileImageUrl: claims["picture"] || claims["profile_image_url"] || existingUser.profileImageUrl,
+      approvalStatus: existingUser.approvalStatus,
+      role: existingUser.role
+    });
+  }
+}
+async function setupAuth(app2) {
+  app2.set("trust proxy", 1);
+  app2.use(getSession());
+  app2.use(passport.initialize());
+  app2.use(passport.session());
+  if (config.server.environment === "development" && (config.auth.clientId === "your-client-id" || config.auth.clientSecret === "your-client-secret")) {
+    console.warn("\u26A0\uFE0F  DEVELOPMENT MODE: OIDC not configured, using development bypass");
+    app2.get("/api/dev-login", async (req, res) => {
+      const devUser = await storage.getUser("dev-admin") || await storage.upsertUser({
+        id: "dev-admin",
+        email: "dev@localhost",
+        firstName: "Development",
+        lastName: "Admin",
+        role: "admin",
+        approvalStatus: "approved",
+        isActive: true
+      });
+      req.login({ claims: { sub: "dev-admin", email: "dev@localhost" }, expires_at: Math.floor(Date.now() / 1e3) + 86400 }, (err) => {
+        if (err) return res.status(500).json({ error: "Login failed" });
+        res.redirect("/");
+      });
+    });
+    app2.get("/api/login", (req, res) => {
+      res.redirect("/api/dev-login");
+    });
+    app2.get("/api/logout", (req, res) => {
+      req.logout(() => {
+        req.session.destroy((err) => {
+          if (err) console.error("Session destruction error:", err);
+          res.clearCookie("connect.sid");
+          res.redirect("/");
+        });
+      });
+    });
+    return;
+  }
+  let oidcConfig;
+  try {
+    oidcConfig = await getOidcConfig();
+  } catch (error) {
+    console.error("Failed to get OIDC configuration:", error);
+    throw new Error("OIDC configuration failed. Please check your OIDC_ISSUER_URL and credentials.");
+  }
+  const verify = async (tokens, verified) => {
+    const user = {};
+    updateUserSession(user, tokens);
+    await upsertUser(tokens.claims());
+    verified(null, user);
+  };
+  for (const domain of config.auth.domains) {
+    const strategy = new Strategy(
+      {
+        name: `oidc:${domain}`,
+        config: oidcConfig,
+        scope: "openid email profile",
+        callbackURL: `${config.server.environment === "production" ? "https" : "http"}://${domain}/api/callback`
+      },
+      verify
+    );
+    passport.use(strategy);
+  }
+  passport.serializeUser((user, cb) => cb(null, user));
+  passport.deserializeUser((user, cb) => cb(null, user));
+  app2.get("/api/login", (req, res, next) => {
+    const strategyName = `oidc:${req.hostname}`;
+    passport.authenticate(strategyName, {
+      prompt: "login consent",
+      scope: ["openid", "email", "profile"]
+    })(req, res, next);
+  });
+  app2.get("/api/callback", (req, res, next) => {
+    const strategyName = `oidc:${req.hostname}`;
+    passport.authenticate(strategyName, {
+      successReturnToOrRedirect: "/",
+      failureRedirect: "/api/login"
+    })(req, res, next);
+  });
+  app2.get("/api/logout", (req, res) => {
+    req.logout(() => {
+      req.session.destroy((err) => {
+        if (err) {
+          console.error("Session destruction error:", err);
+        }
+        res.clearCookie("connect.sid");
+        if (config.auth.logoutUrl) {
+          res.redirect(config.auth.logoutUrl);
+        } else {
+          res.redirect("/");
+        }
+      });
+    });
+  });
+}
+var isAuthenticated = async (req, res, next) => {
+  const user = req.user;
+  if (!req.isAuthenticated() || !user.expires_at) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  const now = Math.floor(Date.now() / 1e3);
+  if (now <= user.expires_at) {
+    const dbUser = await storage.getUser(user.claims.sub);
+    if (!dbUser) {
+      return res.status(401).json({ message: "User not found" });
+    }
+    if (!dbUser.isActive) {
+      return res.status(403).json({ message: "Account deactivated" });
+    }
+    if (dbUser.approvalStatus === "rejected") {
+      return res.status(403).json({
+        message: "Account access denied",
+        reason: dbUser.rejectionReason || "Your account has been rejected by an administrator"
+      });
+    }
+    if (dbUser.approvalStatus === "pending") {
+      return res.status(403).json({
+        message: "Account pending approval",
+        reason: "Your account is awaiting administrator approval"
+      });
+    }
+    if (dbUser.approvalStatus !== "approved") {
+      return res.status(403).json({ message: "Account not approved" });
+    }
+    req.dbUser = dbUser;
+    return next();
+  }
+  const refreshToken = user.refresh_token;
+  if (!refreshToken) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
+  try {
+    const oidcConfig = await getOidcConfig();
+    const tokenResponse = await client.refreshTokenGrant(oidcConfig, refreshToken);
+    updateUserSession(user, tokenResponse);
+    const dbUser = await storage.getUser(user.claims.sub);
+    if (!dbUser || dbUser.approvalStatus !== "approved" || !dbUser.isActive) {
+      return res.status(403).json({ message: "Account not approved" });
+    }
+    req.dbUser = dbUser;
+    return next();
+  } catch (error) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
+};
+var isAdmin = async (req, res, next) => {
+  const user = req.user;
+  if (!user?.claims?.sub) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  const dbUser = await storage.getUser(user.claims.sub);
+  if (!dbUser || dbUser.role !== "admin" || !dbUser.isActive) {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  req.dbUser = dbUser;
+  next();
+};
 
 // server/health-monitor.ts
 import fs from "fs/promises";
@@ -1482,6 +1539,15 @@ async function seedDatabase() {
   console.log("Database seeded successfully!");
   console.log("Administrator account created: admin@permittracker.com");
 }
+if (import.meta.main) {
+  seedDatabase().then(() => {
+    console.log("Seeding completed!");
+    process.exit(0);
+  }).catch((error) => {
+    console.error("Seeding failed:", error);
+    process.exit(1);
+  });
+}
 
 // server/index.ts
 var app = express3();
@@ -1518,17 +1584,18 @@ app.use((req, res, next) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
     res.status(status).json({ message });
-    throw err;
+    console.error("Error:", err);
   });
   if (app.get("env") === "development") {
     await setupVite(app, server);
   } else {
     serveStatic(app);
   }
-  const port = 5e3;
+  const port = config.server.port;
+  const host = config.server.host;
   server.listen({
     port,
-    host: "0.0.0.0",
+    host,
     reusePort: true
   }, () => {
     log(`serving on port ${port}`);
