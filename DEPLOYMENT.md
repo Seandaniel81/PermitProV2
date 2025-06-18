@@ -9,7 +9,22 @@
 
 ## Quick Deployment
 
-### 1. Automated Installation
+### 1. Choose Your Web Server
+
+**Apache2 (Recommended)**
+```bash
+# Automated Apache2 setup with SSL
+sudo ./setup-apache2.sh
+```
+
+**nginx Alternative**
+```bash
+# Manual nginx configuration (see nginx section below)
+chmod +x install.sh
+./install.sh
+```
+
+### 2. Automated Installation
 
 ```bash
 # Make installation script executable
@@ -119,9 +134,25 @@ Create a virtual host file at `/etc/apache2/sites-available/permit-management.co
 </VirtualHost>
 ```
 
-### Required Apache2 Modules
+## Apache2 Automated Setup
 
-Enable the necessary Apache2 modules:
+The included `setup-apache2.sh` script provides automated Apache2 configuration with SSL support:
+
+```bash
+# Run the automated Apache2 setup
+sudo ./setup-apache2.sh
+```
+
+This script will:
+- Install Apache2 and required modules
+- Configure SSL certificates (Let's Encrypt or self-signed)
+- Set up security headers and DDoS protection
+- Create systemd service for the application
+- Configure firewall rules
+
+### Manual Apache2 Configuration
+
+If you prefer manual setup, enable the necessary Apache2 modules:
 
 ```bash
 # Enable required modules
