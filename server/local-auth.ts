@@ -103,24 +103,45 @@ export async function setupLocalAuth(app: Express) {
   });
 
   // Login route
-  app.post('/api/login', 
-    passport.authenticate('local', {
-      failureFlash: false
-    }),
-    (req, res) => {
-      const user = req.user as any;
-      res.json({ 
-        success: true, 
-        user: {
-          id: user?.id,
-          email: user?.email,
-          firstName: user?.firstName,
-          lastName: user?.lastName,
-          role: user?.role
+  app.post('/api/login', (req, res, next) => {
+    passport.authenticate('local', (err: any, user: any, info: any) => {
+      if (err) {
+        return res.status(500).json({ 
+          success: false, 
+          message: 'Authentication error' 
+        });
+      }
+      
+      if (!user) {
+        return res.status(401).json({ 
+          success: false, 
+          message: info?.message || 'Invalid credentials' 
+        });
+      }
+
+      req.logIn(user, (err) => {
+        if (err) {
+          return res.status(500).json({ 
+            success: false, 
+            message: 'Login failed' 
+          });
         }
+        
+        return res.json({ 
+          success: true, 
+          user: {
+            id: user.id,
+            email: user.email,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            role: user.role,
+            isActive: user.isActive,
+            approvalStatus: user.approvalStatus
+          }
+        });
       });
-    }
-  );
+    })(req, res, next);
+  });
 
   // Logout route
   app.post('/api/logout', (req, res) => {
