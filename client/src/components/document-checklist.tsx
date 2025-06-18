@@ -28,6 +28,7 @@ interface AddDocumentForm {
 export function DocumentChecklist({ packageId, documents }: DocumentChecklistProps) {
   const [isAddingDocument, setIsAddingDocument] = useState(false);
   const [uploadingDocId, setUploadingDocId] = useState<number | null>(null);
+  const [viewingDocument, setViewingDocument] = useState<{ filename: string; documentName: string } | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -448,6 +449,14 @@ export function DocumentChecklist({ packageId, documents }: DocumentChecklistPro
           </div>
         )}
       </CardContent>
+      
+      {/* Document Viewer */}
+      <DocumentViewer
+        filename={viewingDocument?.filename || null}
+        documentName={viewingDocument?.documentName || ""}
+        isOpen={!!viewingDocument}
+        onClose={() => setViewingDocument(null)}
+      />
     </Card>
   );
 }
