@@ -41,11 +41,11 @@ function Router() {
 
   return (
     <Switch>
+      <Route path="/login">
+        {isAuthenticated ? <Dashboard /> : <Login />}
+      </Route>
       {!isAuthenticated ? (
-        <>
-          <Route path="/login" component={Login} />
-          <Route path="/" component={Landing} />
-        </>
+        <Route path="/" component={Landing} />
       ) : (
         <>
           <Route path="/" component={Dashboard} />

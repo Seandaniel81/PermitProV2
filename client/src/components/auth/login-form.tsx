@@ -44,12 +44,18 @@ export function LoginForm({ onSuccess, onRegisterClick }: LoginFormProps) {
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include",
         body: JSON.stringify(data),
       });
 
       if (response.ok) {
-        onSuccess?.();
-        window.location.href = "/";
+        const result = await response.json();
+        if (result.success) {
+          // Redirect to dashboard after successful login
+          window.location.href = "/";
+        } else {
+          setLoginError(result.message || "Login failed");
+        }
       } else {
         const error = await response.json();
         setLoginError(error.message || "Login failed");
