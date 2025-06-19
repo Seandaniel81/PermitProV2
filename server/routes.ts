@@ -58,6 +58,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
   setupSimpleAuth(app);
 
+  // Simple dashboard route
+  app.get('/dashboard', isAuthenticated, (req, res) => {
+    res.sendFile(path.join(__dirname, 'simple-dashboard.html'));
+  });
+
   // Serve uploaded files
   app.get('/api/files/:filename', isAuthenticated, (req, res) => {
     try {

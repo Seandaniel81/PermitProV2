@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Permit Tracker Dashboard</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f3f4f6;
+        }
+        .header {
+            background-color: #1f2937;
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+        .btn {
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover {
+            background-color: #2563eb;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #1f2937;
+        }
+        .stat-label {
+            color: #6b7280;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Permit Package Tracker</h1>
+        <button class="btn" onclick="logout()">Logout</button>
+    </div>
+
+    <div class="container">
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number" id="totalPackages">0</div>
+                <div class="stat-label">Total Packages</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="inProgress">0</div>
+                <div class="stat-label">In Progress</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="completed">0</div>
+                <div class="stat-label">Completed</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="submitted">0</div>
+                <div class="stat-label">Submitted</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Welcome to Permit Package Tracker</h2>
+            <p>Your authentication is working correctly! You are now logged in as an administrator.</p>
+            
+            <h3>Available Features:</h3>
+            <ul>
+                <li>Create and manage building permit packages</li>
+                <li>Upload and track required documents</li>
+                <li>Monitor permit status and progress</li>
+                <li>Generate reports and export data</li>
+                <li>Manage user accounts and permissions</li>
+            </ul>
+
+            <h3>Quick Actions:</h3>
+            <p>
+                <button class="btn" onclick="alert('Feature coming soon! The full React application will be restored once authentication is stable.')">Create New Package</button>
+                <button class="btn" onclick="alert('Feature coming soon!')">View Reports</button>
+                <button class="btn" onclick="checkAuth()">Test Authentication</button>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        async function logout() {
+            try {
+                await fetch('/api/auth/logout', { 
+                    method: 'POST',
+                    credentials: 'include' 
+                });
+                window.location.href = '/';
+            } catch (error) {
+                console.error('Logout error:', error);
+                window.location.href = '/';
+            }
+        }
+
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/auth/user', {
+                    credentials: 'include'
+                });
+                const user = await response.json();
+                if (response.ok) {
+                    alert(`Authentication verified! Logged in as: ${user.email} (${user.role})`);
+                } else {
+                    alert('Authentication failed: ' + user.message);
+                }
+            } catch (error) {
+                alert('Network error checking authentication');
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/stats', {
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    const stats = await response.json();
+                    document.getElementById('totalPackages').textContent = stats.total || 0;
+                    document.getElementById('inProgress').textContent = stats.inProgress || 0;
+                    document.getElementById('completed').textContent = (stats.readyToSubmit || 0) + (stats.submitted || 0);
+                    document.getElementById('submitted').textContent = stats.submitted || 0;
+                }
+            } catch (error) {
+                console.error('Failed to load stats:', error);
+            }
+        }
+
+        // Load stats on page load
+        loadStats();
+    </script>
+</body>
+</html>
