@@ -169,6 +169,17 @@ export function setupSimpleAuth(app: express.Express) {
       res.json({ success: true });
     });
   });
+
+  // Logout route (GET for direct navigation)
+  app.get('/api/auth/logout', (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        console.error('Logout error:', err);
+      }
+      res.clearCookie('connect.sid');
+      res.redirect('/login');
+    });
+  });
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
