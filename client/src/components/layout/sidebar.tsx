@@ -22,8 +22,7 @@ export function Sidebar() {
   const { user, isAdmin } = useAuth();
 
   const handleLogout = () => {
-    // In standalone mode, just refresh the page
-    window.location.reload();
+    window.location.href = "/api/auth/logout";
   };
 
   // Filter navigation based on user role
@@ -94,7 +93,7 @@ export function Sidebar() {
             className="w-full justify-start text-gray-600 hover:text-gray-900"
           >
             <LogOut className="mr-2 h-4 w-4" />
-            Refresh
+            Sign Out
           </Button>
         </div>
       </div>

@@ -59,7 +59,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   setupSimpleAuth(app);
 
   // Serve uploaded files
-  app.get('/api/files/:filename', (req, res) => {
+  app.get('/api/files/:filename', isAuthenticated, (req, res) => {
     try {
       const filename = req.params.filename;
       const filePath = path.join(uploadsDir, filename);
@@ -101,7 +101,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes are handled by simple-auth.ts
 
   // Admin routes
-  app.get('/api/admin/users', async (req, res) => {
+  app.get('/api/admin/users', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const users = await storage.getAllUsers();
       res.json(users);
@@ -111,7 +111,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch('/api/admin/users/:id', async (req, res) => {
+  app.patch('/api/admin/users/:id', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const userId = req.params.id;
       const updates = req.body;
@@ -127,7 +127,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Settings routes
-  app.get('/api/settings', async (req, res) => {
+  app.get('/api/settings', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const settings = await storage.getAllSettings();
       res.json(settings);
@@ -136,7 +136,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/settings/category/:category', async (req, res) => {
+  app.get('/api/settings/category/:category', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const { category } = req.params;
       const settings = await storage.getSettingsByCategory(category);
@@ -146,7 +146,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/settings/:id', async (req: any, res) => {
+  app.put('/api/settings/:id', isAuthenticated, isAdmin, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
       const validation = updateSettingSchema.safeParse(req.body);
@@ -159,7 +159,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const updatedSetting = await storage.updateSetting(id, {
         ...validation.data,
-        updatedBy: 'standalone-user',
+        updatedBy: req.user.id,
       });
       
       if (!updatedSetting) {
@@ -173,7 +173,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // User management routes
-  app.get('/api/users', async (req, res) => {
+  app.get('/api/users', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const users = await storage.getAllUsers();
       res.json(users);
@@ -182,7 +182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get('/api/users/pending', async (req, res) => {
+  app.get('/api/users/pending', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const users = await storage.getAllUsers();
       const pendingUsers = users.filter(user => user.approvalStatus === 'pending');
@@ -192,13 +192,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/users/:id/approve', async (req: any, res) => {
+  app.post('/api/users/:id/approve', isAuthenticated, isAdmin, async (req: any, res) => {
     try {
       const { id } = req.params;
       
       const updatedUser = await storage.updateUser(id, {
         approvalStatus: 'approved',
-        approvedBy: 'standalone-user',
+        approvedBy: (req as any).user.id,
         approvedAt: new Date(),
         rejectionReason: null,
       });
@@ -220,7 +220,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const updatedUser = await storage.updateUser(id, {
         approvalStatus: 'rejected',
-        approvedBy: 'standalone-user',
+        approvedBy: (req as any).user.id,
         approvedAt: new Date(),
         rejectionReason: reason || 'No reason provided',
       });
