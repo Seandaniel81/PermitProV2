@@ -60,21 +60,26 @@ export function LoginForm({ onSuccess, onRegisterClick }: LoginFormProps) {
         console.log("Login result:", result);
         
         if (result.success) {
+          console.log("Login successful, invalidating queries and redirecting...");
           // Invalidate auth queries to force refetch of user data
           await queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
-          // Small delay to ensure cache invalidation completes
-          setTimeout(() => {
-            window.location.href = "/";
-          }, 100);
+          
+          // Call onSuccess if provided, otherwise redirect
+          if (onSuccess) {
+            onSuccess();
+          } else {
+            // Use location.replace to avoid back button issues
+            window.location.replace("/");
+          }
         } else {
-          setLoginError(result.message || "Login failed");
+          setLoginError(result.error || result.message || "Login failed");
         }
       } else {
         const errorText = await response.text();
         console.error("Login failed with status:", response.status, "Response:", errorText);
         try {
           const errorJson = JSON.parse(errorText);
-          setLoginError(errorJson.message || "Login failed");
+          setLoginError(errorJson.error || errorJson.message || "Login failed");
         } catch {
           setLoginError(`Login failed (${response.status}): ${errorText}`);
         }
