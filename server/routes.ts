@@ -2,7 +2,7 @@ import type { Express } from "express";
 import express from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupSimpleAuth, isAuthenticated, isAdmin } from "./simple-auth";
+import { setupAuth, isAuthenticated, isAdmin } from "./auth";
 import { healthMonitor } from "./health-monitor";
 import { config } from "./config";
 import multer from "multer";
@@ -55,12 +55,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Auth middleware
-  setupSimpleAuth(app);
+  // Auth middleware - use OIDC
+  await setupAuth(app);
 
   // Simple dashboard route
   app.get('/dashboard', isAuthenticated, (req, res) => {
     res.sendFile(path.join(__dirname, 'simple-dashboard.html'));
+  });
+
+  // Landing page that redirects to login
+  app.get('/', (req, res) => {
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Permit Tracker</title>
+        <style>
+          body { 
+            font-family: system-ui, sans-serif; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 100vh; 
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          }
+          .container { 
+            text-align: center; 
+            background: white; 
+            padding: 3rem; 
+            border-radius: 12px; 
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            max-width: 400px;
+          }
+          h1 { margin-bottom: 1rem; color: #1f2937; }
+          p { margin-bottom: 2rem; color: #6b7280; }
+          .btn { 
+            background: #3b82f6; 
+            color: white; 
+            border: none; 
+            padding: 12px 24px; 
+            border-radius: 6px; 
+            text-decoration: none; 
+            display: inline-block;
+            font-size: 16px;
+            font-weight: 500;
+          }
+          .btn:hover { background: #2563eb; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>Permit Package Tracker</h1>
+          <p>Streamline your building permit process with comprehensive package management.</p>
+          <a href="/api/login" class="btn">Sign In with Google</a>
+        </div>
+      </body>
+      </html>
+    `);
   });
 
   // Serve uploaded files

@@ -10,6 +10,8 @@ import { config } from "./config";
 
 const getOidcConfig = memoize(
   async () => {
+    console.log('Setting up OIDC with issuer:', config.auth.issuerUrl);
+    console.log('Client ID:', config.auth.clientId);
     return await client.discovery(
       new URL(config.auth.issuerUrl),
       config.auth.clientId
