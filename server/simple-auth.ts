@@ -53,13 +53,17 @@ export function setupSimpleAuth(app: express.Express) {
 
       const user = await storage.getUserByEmail(email);
       if (!user || !user.passwordHash) {
-        console.log('User not found or no password hash');
+        console.log('User not found or no password hash for:', email);
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
+      console.log('Found user:', { id: user.id, email: user.email, hasPasswordHash: !!user.passwordHash });
+      
       const isValid = await verifyPassword(password, user.passwordHash);
+      console.log('Password verification result:', isValid);
+      
       if (!isValid) {
-        console.log('Invalid password');
+        console.log('Invalid password for user:', email);
         return res.status(401).json({ error: 'Invalid credentials' });
       }
 
