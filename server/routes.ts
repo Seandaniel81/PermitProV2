@@ -412,7 +412,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Add document to package
-  app.post("/api/packages/:packageId/documents", async (req, res) => {
+  app.post("/api/packages/:packageId/documents", isAuthenticated, async (req, res) => {
     try {
       const packageId = parseInt(req.params.packageId);
       if (isNaN(packageId)) {
@@ -445,7 +445,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get package statistics
-  app.get("/api/stats", async (req, res) => {
+  app.get("/api/stats", isAuthenticated, async (req, res) => {
     try {
       const stats = await storage.getPackageStats();
       res.json(stats);
@@ -455,7 +455,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Upload file to document
-  app.post("/api/documents/:id/upload", upload.single('file'), async (req, res) => {
+  app.post("/api/documents/:id/upload", isAuthenticated, upload.single('file'), async (req, res) => {
     try {
       const documentId = parseInt(req.params.id);
       if (isNaN(documentId)) {
@@ -491,7 +491,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Download/view file
-  app.get("/api/documents/:id/download", async (req, res) => {
+  app.get("/api/documents/:id/download", isAuthenticated, async (req, res) => {
     try {
       const documentId = parseInt(req.params.id);
       if (isNaN(documentId)) {
@@ -521,7 +521,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete uploaded file
-  app.delete("/api/documents/:id/file", async (req, res) => {
+  app.delete("/api/documents/:id/file", isAuthenticated, async (req, res) => {
     try {
       const documentId = parseInt(req.params.id);
       if (isNaN(documentId)) {
