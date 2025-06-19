@@ -41,7 +41,10 @@ export function LoginForm({ onSuccess, onRegisterClick }: LoginFormProps) {
     setLoginError(null);
 
     try {
-      console.log("Attempting login with:", { email: data.email });
+      console.log("Attempting login with:", { email: data.email, password: data.password });
+      
+      const requestBody = JSON.stringify(data);
+      console.log("Request body:", requestBody);
       
       const response = await fetch("/api/auth/login", {
         method: "POST",
@@ -49,15 +52,25 @@ export function LoginForm({ onSuccess, onRegisterClick }: LoginFormProps) {
           "Content-Type": "application/json",
         },
         credentials: "include",
-        body: JSON.stringify(data),
+        body: requestBody,
       });
 
       console.log("Login response status:", response.status);
       console.log("Login response headers:", Object.fromEntries(response.headers.entries()));
+      
+      const responseText = await response.text();
+      console.log("Raw response text:", responseText);
 
       if (response.ok) {
-        const result = await response.json();
-        console.log("Login result:", result);
+        let result;
+        try {
+          result = JSON.parse(responseText);
+          console.log("Login result:", result);
+        } catch (e) {
+          console.error("Failed to parse response as JSON:", e);
+          setLoginError("Invalid response from server");
+          return;
+        }
         
         if (result.success) {
           console.log("Login successful, invalidating queries and redirecting...");
@@ -75,13 +88,12 @@ export function LoginForm({ onSuccess, onRegisterClick }: LoginFormProps) {
           setLoginError(result.error || result.message || "Login failed");
         }
       } else {
-        const errorText = await response.text();
-        console.error("Login failed with status:", response.status, "Response:", errorText);
+        console.error("Login failed with status:", response.status, "Response:", responseText);
         try {
-          const errorJson = JSON.parse(errorText);
+          const errorJson = JSON.parse(responseText);
           setLoginError(errorJson.error || errorJson.message || "Login failed");
         } catch {
-          setLoginError(`Login failed (${response.status}): ${errorText}`);
+          setLoginError(`Login failed (${response.status}): ${responseText}`);
         }
       }
     } catch (error) {
