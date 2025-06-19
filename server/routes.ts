@@ -213,7 +213,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/users/:id/reject', async (req: any, res) => {
+  app.post('/api/users/:id/reject', isAuthenticated, isAdmin, async (req: any, res) => {
     try {
       const { id } = req.params;
       const { reason } = req.body;
@@ -235,7 +235,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put('/api/users/:id', async (req, res) => {
+  app.put('/api/users/:id', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       const updates = req.body;
@@ -252,7 +252,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Get all packages with statistics
-  app.get("/api/packages", async (req, res) => {
+  app.get("/api/packages", isAuthenticated, async (req, res) => {
     try {
       const packages = await storage.getAllPackages();
       const stats = await storage.getPackageStats();
@@ -286,7 +286,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get single package with documents
-  app.get("/api/packages/:id", async (req, res) => {
+  app.get("/api/packages/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -305,7 +305,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create new package
-  app.post("/api/packages", async (req, res) => {
+  app.post("/api/packages", isAuthenticated, async (req, res) => {
     try {
       const validation = insertPermitPackageSchema.safeParse(req.body);
       if (!validation.success) {
@@ -338,7 +338,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update package
-  app.patch("/api/packages/:id", async (req, res) => {
+  app.patch("/api/packages/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -366,7 +366,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete package
-  app.delete("/api/packages/:id", async (req, res) => {
+  app.delete("/api/packages/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -385,7 +385,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update document
-  app.patch("/api/documents/:id", async (req, res) => {
+  app.patch("/api/documents/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
