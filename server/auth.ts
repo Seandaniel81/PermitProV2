@@ -143,16 +143,20 @@ export async function setupAuth(app: Express) {
   };
 
   for (const domain of config.auth.domains) {
+    const protocol = config.server.environment === 'production' ? 'https' : 'http';
+    const callbackURL = `${protocol}://${domain}/api/callback`;
+    
     const strategy = new Strategy(
       {
         name: `oidc:${domain}`,
         config: oidcConfig,
         scope: "openid email profile",
-        callbackURL: `${config.server.environment === 'production' ? 'https' : 'http'}://${domain}/api/callback`,
+        callbackURL,
       },
       verify,
     );
     passport.use(strategy);
+    console.log(`Configured OAuth strategy for domain: ${domain}, callback: ${callbackURL}`);
   }
 
   passport.serializeUser((user: Express.User, cb) => cb(null, user));
