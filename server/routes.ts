@@ -255,6 +255,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // OAuth configuration test endpoint
+  app.get("/api/oauth-status", (req, res) => {
+    const clientId = process.env.OIDC_CLIENT_ID;
+    const clientSecret = process.env.OIDC_CLIENT_SECRET;
+    const useDevAuth = process.env.USE_DEV_AUTH;
+    
+    res.json({
+      clientIdConfigured: clientId && clientId !== 'your-client-id',
+      clientSecretConfigured: clientSecret && clientSecret !== 'your-client-secret',
+      developmentMode: useDevAuth === 'true',
+      expectedRedirectURI: 'http://localhost:5000/api/callback',
+      currentHostname: req.hostname,
+      allowedDomains: process.env.ALLOWED_DOMAINS?.split(',') || [],
+      instructions: {
+        step1: "Go to Google Cloud Console (console.cloud.google.com)",
+        step2: "Navigate to APIs & Services > Credentials", 
+        step3: "Find your OAuth 2.0 Client ID",
+        step4: "Add this exact redirect URI: http://localhost:5000/api/callback",
+        step5: "Set USE_DEV_AUTH=false in .env to test real OAuth"
+      }
+    });
+  });
+
   // Auth routes are handled by simple-auth.ts
 
   // Admin routes
