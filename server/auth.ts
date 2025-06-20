@@ -143,7 +143,8 @@ export async function setupAuth(app: Express) {
   };
 
   for (const domain of config.auth.domains) {
-    const protocol = config.server.environment === 'production' ? 'https' : 'http';
+    // Use HTTPS for production domains, HTTP for localhost
+    const protocol = domain.includes('localhost') ? 'http' : 'https';
     const callbackURL = `${protocol}://${domain}/api/callback`;
     
     const strategy = new Strategy(
