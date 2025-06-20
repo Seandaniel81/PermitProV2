@@ -1,0 +1,2 @@
+Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource at https://play.google.com/log?format=json&hasfast=true&authuser=0. (Reason: CORS request did not succeed). Status code: (null).
+This error page has no error code in its security info aboutNetError.mjs:867:13
