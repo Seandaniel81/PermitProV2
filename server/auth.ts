@@ -163,7 +163,11 @@ export async function setupAuth(app: Express) {
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   app.get("/api/login", (req, res, next) => {
-    const strategyName = `oidc:${req.hostname}`;
+    // Handle localhost with port mapping
+    const hostname = req.hostname === 'localhost' ? 'localhost:5000' : req.hostname;
+    const strategyName = `oidc:${hostname}`;
+    console.log(`Login attempt for hostname: ${req.hostname}, mapped to: ${hostname}, strategy: ${strategyName}`);
+    
     passport.authenticate(strategyName, {
       prompt: "login consent",
       scope: ["openid", "email", "profile"],
@@ -171,7 +175,11 @@ export async function setupAuth(app: Express) {
   });
 
   app.get("/api/callback", (req, res, next) => {
-    const strategyName = `oidc:${req.hostname}`;
+    // Handle localhost with port mapping
+    const hostname = req.hostname === 'localhost' ? 'localhost:5000' : req.hostname;
+    const strategyName = `oidc:${hostname}`;
+    console.log(`Callback for hostname: ${req.hostname}, mapped to: ${hostname}, strategy: ${strategyName}`);
+    
     passport.authenticate(strategyName, {
       successReturnToOrRedirect: "/",
       failureRedirect: "/api/login",
