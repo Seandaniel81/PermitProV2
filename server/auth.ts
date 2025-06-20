@@ -86,8 +86,12 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // Development bypass for OIDC issues - only when credentials are not properly configured
-  if (config.auth.clientId === 'your-client-id' || config.auth.clientSecret === 'your-client-secret') {
+  // Development bypass and fallback for OIDC issues
+  const useDevBypass = config.auth.clientId === 'your-client-id' || 
+                       config.auth.clientSecret === 'your-client-secret' ||
+                       process.env.USE_DEV_AUTH === 'true';
+  
+  if (useDevBypass) {
     console.warn("⚠️  DEVELOPMENT MODE: OIDC not configured, using development bypass");
     
     app.get("/api/dev-login", async (req, res) => {
