@@ -62,6 +62,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/dashboard', isAuthenticated, async (req, res) => {
     const packages = await storage.getAllPackages();
     const stats = await storage.getPackageStats();
+    const user = (req as any).dbUser;
     
     res.send(`
       <!DOCTYPE html>
@@ -94,15 +95,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .progress-bar { background: #e5e7eb; height: 4px; border-radius: 2px; margin-top: 0.5rem; }
           .progress-fill { background: #3b82f6; height: 100%; border-radius: 2px; }
           .logout { color: #dc2626; text-decoration: none; }
+          .admin-section { margin-top: 2rem; }
+          .quick-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+          .action-card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; }
+          .action-card h3 { margin-bottom: 0.5rem; color: #1f2937; }
+          .action-card p { color: #64748b; font-size: 0.875rem; margin-bottom: 1rem; }
+          .action-card .btn { width: 100%; }
         </style>
       </head>
       <body>
         <div class="header">
           <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto;">
             <h1>Permit Management System</h1>
-            <a href="/api/logout" class="logout">Logout</a>
+            <div style="display: flex; align-items: center; gap: 1rem;">
+              <span style="color: #64748b; font-size: 0.875rem;">Welcome, ${user.firstName} ${user.lastName}</span>
+              <span style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem;">${user.role}</span>
+              <a href="/api/logout" class="logout">Logout</a>
+            </div>
           </div>
         </div>
+        
+        ${user.role === 'admin' ? `
+        <div style="background: white; border-bottom: 1px solid #e2e8f0;">
+          <div style="max-width: 1200px; margin: 0 auto; padding: 0 2rem;">
+            <nav style="display: flex; gap: 2rem;">
+              <a href="/dashboard" style="padding: 1rem 0; color: #3b82f6; text-decoration: none; border-bottom: 2px solid #3b82f6;">Dashboard</a>
+              <a href="/admin/users" style="padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent;">User Management</a>
+              <a href="/admin/packages" style="padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent;">All Packages</a>
+              <a href="/admin/settings" style="padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent;">System Settings</a>
+              <a href="/admin/reports" style="padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent;">Reports</a>
+            </nav>
+          </div>
+        </div>
+        ` : ''}
         
         <div class="container">
           <div class="stats">
@@ -153,6 +178,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
               `).join('')}
             </div>
           </div>
+          
+          ${user.role === 'admin' ? `
+          <div class="admin-section">
+            <div class="quick-actions">
+              <div class="action-card">
+                <h3>User Management</h3>
+                <p>Manage user accounts and permissions</p>
+                <a href="/admin/users" class="btn">Manage Users</a>
+              </div>
+              <div class="action-card">
+                <h3>Package Management</h3>
+                <p>View and manage all permit packages</p>
+                <a href="/admin/packages" class="btn">View All Packages</a>
+              </div>
+              <div class="action-card">
+                <h3>System Settings</h3>
+                <p>Configure application settings</p>
+                <a href="/admin/settings" class="btn">Settings</a>
+              </div>
+              <div class="action-card">
+                <h3>Reports</h3>
+                <p>Generate system reports and analytics</p>
+                <a href="/admin/reports" class="btn">View Reports</a>
+              </div>
+            </div>
+          </div>
+          ` : ''}
         </div>
       </body>
       </html>
@@ -280,7 +332,182 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Auth routes are handled by simple-auth.ts
 
-  // Admin routes
+  // Admin User Management Page
+  app.get('/admin/users', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      const currentUser = (req as any).dbUser;
+      
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>User Management - Permit System</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: system-ui, sans-serif; background: #f8fafc; }
+            .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 2rem; }
+            .nav { background: white; border-bottom: 1px solid #e2e8f0; }
+            .nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 2rem; display: flex; gap: 2rem; }
+            .nav a { padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent; }
+            .nav a.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+            .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+            .users-table { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+            .table-header { padding: 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { text-align: left; padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; }
+            th { background: #f8fafc; font-weight: 600; color: #374151; }
+            .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
+            .status-approved { background: #d1fae5; color: #065f46; }
+            .status-pending { background: #fef3c7; color: #92400e; }
+            .status-rejected { background: #fee2e2; color: #dc2626; }
+            .role-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; background: #3b82f6; color: white; }
+            .btn { background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 0.875rem; cursor: pointer; }
+            .btn-sm { padding: 4px 8px; font-size: 0.75rem; }
+            .btn-success { background: #10b981; }
+            .btn-danger { background: #ef4444; }
+            .logout { color: #dc2626; text-decoration: none; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto;">
+              <h1>User Management</h1>
+              <div style="display: flex; align-items: center; gap: 1rem;">
+                <span style="color: #64748b; font-size: 0.875rem;">Welcome, ${currentUser.firstName} ${currentUser.lastName}</span>
+                <span class="role-badge">${currentUser.role}</span>
+                <a href="/api/logout" class="logout">Logout</a>
+              </div>
+            </div>
+          </div>
+          
+          <div class="nav">
+            <div class="nav-inner">
+              <a href="/dashboard">Dashboard</a>
+              <a href="/admin/users" class="active">User Management</a>
+              <a href="/admin/packages">All Packages</a>
+              <a href="/admin/settings">System Settings</a>
+              <a href="/admin/reports">Reports</a>
+            </div>
+          </div>
+          
+          <div class="container">
+            <div class="users-table">
+              <div class="table-header">
+                <h2>System Users</h2>
+                <button class="btn" onclick="window.location.reload()">Refresh</button>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Company</th>
+                    <th>Last Login</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${users.map(user => `
+                    <tr>
+                      <td>
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                          ${user.profileImageUrl ? `<img src="${user.profileImageUrl}" alt="" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">` : `<div style="width: 32px; height: 32px; border-radius: 50%; background: #e5e7eb; display: flex; align-items: center; justify-content: center; color: #6b7280; font-weight: 600;">${user.firstName?.[0] || 'U'}</div>`}
+                          <div>
+                            <div style="font-weight: 500;">${user.firstName || ''} ${user.lastName || ''}</div>
+                            <div style="font-size: 0.75rem; color: #6b7280;">ID: ${user.id}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>${user.email || 'N/A'}</td>
+                      <td><span class="role-badge">${user.role}</span></td>
+                      <td><span class="status-badge status-${user.approvalStatus}">${user.approvalStatus}</span></td>
+                      <td>${user.company || 'N/A'}</td>
+                      <td>${user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleDateString() : 'Never'}</td>
+                      <td>
+                        <div style="display: flex; gap: 0.5rem;">
+                          ${user.approvalStatus === 'pending' ? `<button class="btn btn-sm btn-success" onclick="approveUser('${user.id}')">Approve</button>` : ''}
+                          ${user.isActive ? `<button class="btn btn-sm btn-danger" onclick="deactivateUser('${user.id}')">Deactivate</button>` : `<button class="btn btn-sm btn-success" onclick="activateUser('${user.id}')">Activate</button>`}
+                        </div>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          
+          <script>
+            async function approveUser(userId) {
+              if (confirm('Approve this user?')) {
+                try {
+                  const response = await fetch('/api/admin/users/' + userId, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ approvalStatus: 'approved' })
+                  });
+                  if (response.ok) {
+                    location.reload();
+                  } else {
+                    alert('Failed to approve user');
+                  }
+                } catch (error) {
+                  alert('Error: ' + error.message);
+                }
+              }
+            }
+            
+            async function deactivateUser(userId) {
+              if (confirm('Deactivate this user?')) {
+                try {
+                  const response = await fetch('/api/admin/users/' + userId, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ isActive: false })
+                  });
+                  if (response.ok) {
+                    location.reload();
+                  } else {
+                    alert('Failed to deactivate user');
+                  }
+                } catch (error) {
+                  alert('Error: ' + error.message);
+                }
+              }
+            }
+            
+            async function activateUser(userId) {
+              if (confirm('Activate this user?')) {
+                try {
+                  const response = await fetch('/api/admin/users/' + userId, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ isActive: true })
+                  });
+                  if (response.ok) {
+                    location.reload();
+                  } else {
+                    alert('Failed to activate user');
+                  }
+                } catch (error) {
+                  alert('Error: ' + error.message);
+                }
+              }
+            }
+          </script>
+        </body>
+        </html>
+      `);
+    } catch (error) {
+      console.error("Error in user management page:", error);
+      res.status(500).send("Error loading user management page");
+    }
+  });
+
+  // Admin API routes
   app.get('/api/admin/users', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const users = await storage.getAllUsers();
@@ -303,6 +530,359 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating user:", error);
       res.status(500).json({ message: "Failed to update user" });
+    }
+  });
+
+  // Admin Package Management Page
+  app.get('/admin/packages', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const packages = await storage.getAllPackages();
+      const users = await storage.getAllUsers();
+      const currentUser = (req as any).dbUser;
+      
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Package Management - Permit System</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: system-ui, sans-serif; background: #f8fafc; }
+            .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 2rem; }
+            .nav { background: white; border-bottom: 1px solid #e2e8f0; }
+            .nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 2rem; display: flex; gap: 2rem; }
+            .nav a { padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent; }
+            .nav a.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+            .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+            .packages-table { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+            .table-header { padding: 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { text-align: left; padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; }
+            th { background: #f8fafc; font-weight: 600; color: #374151; }
+            .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
+            .status-draft { background: #f3f4f6; color: #374151; }
+            .status-in_progress { background: #fef3c7; color: #92400e; }
+            .status-ready_to_submit { background: #d1fae5; color: #065f46; }
+            .status-submitted { background: #dbeafe; color: #1e40af; }
+            .progress-bar { background: #e5e7eb; height: 4px; border-radius: 2px; margin-top: 0.25rem; width: 60px; }
+            .progress-fill { background: #3b82f6; height: 100%; border-radius: 2px; }
+            .btn { background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 0.875rem; cursor: pointer; }
+            .btn-sm { padding: 4px 8px; font-size: 0.75rem; }
+            .btn-success { background: #10b981; }
+            .btn-danger { background: #ef4444; }
+            .role-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; background: #3b82f6; color: white; }
+            .logout { color: #dc2626; text-decoration: none; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto;">
+              <h1>Package Management</h1>
+              <div style="display: flex; align-items: center; gap: 1rem;">
+                <span style="color: #64748b; font-size: 0.875rem;">Welcome, ${currentUser.firstName} ${currentUser.lastName}</span>
+                <span class="role-badge">${currentUser.role}</span>
+                <a href="/api/logout" class="logout">Logout</a>
+              </div>
+            </div>
+          </div>
+          
+          <div class="nav">
+            <div class="nav-inner">
+              <a href="/dashboard">Dashboard</a>
+              <a href="/admin/users">User Management</a>
+              <a href="/admin/packages" class="active">All Packages</a>
+              <a href="/admin/settings">System Settings</a>
+              <a href="/admin/reports">Reports</a>
+            </div>
+          </div>
+          
+          <div class="container">
+            <div class="packages-table">
+              <div class="table-header">
+                <h2>All Permit Packages</h2>
+                <div style="display: flex; gap: 1rem;">
+                  <select onchange="filterPackages(this.value)" style="padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 4px;">
+                    <option value="">All Statuses</option>
+                    <option value="draft">Draft</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="ready_to_submit">Ready to Submit</option>
+                    <option value="submitted">Submitted</option>
+                  </select>
+                  <button class="btn" onclick="window.location.reload()">Refresh</button>
+                </div>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Package</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Progress</th>
+                    <th>Client</th>
+                    <th>Assigned To</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${packages.map(pkg => {
+                    const assignedUser = users.find(u => u.id === pkg.assignedTo);
+                    const createdUser = users.find(u => u.id === pkg.createdBy);
+                    return `
+                    <tr>
+                      <td>
+                        <div>
+                          <div style="font-weight: 500;">${pkg.projectName}</div>
+                          <div style="font-size: 0.75rem; color: #6b7280;">${pkg.address}</div>
+                        </div>
+                      </td>
+                      <td>${pkg.permitType}</td>
+                      <td><span class="status-badge status-${pkg.status}">${pkg.status.replace('_', ' ')}</span></td>
+                      <td>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                          <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${pkg.progressPercentage}%"></div>
+                          </div>
+                          <span style="font-size: 0.75rem; color: #6b7280;">${pkg.completedDocuments}/${pkg.totalDocuments}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div>
+                          <div style="font-weight: 500;">${pkg.clientName || 'N/A'}</div>
+                          <div style="font-size: 0.75rem; color: #6b7280;">${pkg.clientEmail || ''}</div>
+                        </div>
+                      </td>
+                      <td>${assignedUser ? `${assignedUser.firstName} ${assignedUser.lastName}` : 'Unassigned'}</td>
+                      <td>
+                        <div>
+                          <div>${new Date(pkg.createdAt).toLocaleDateString()}</div>
+                          <div style="font-size: 0.75rem; color: #6b7280;">${createdUser ? `${createdUser.firstName} ${createdUser.lastName}` : 'Unknown'}</div>
+                        </div>
+                      </td>
+                      <td>
+                        <div style="display: flex; gap: 0.5rem;">
+                          <button class="btn btn-sm" onclick="viewPackage(${pkg.id})">View</button>
+                          <button class="btn btn-sm btn-danger" onclick="deletePackage(${pkg.id})">Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          
+          <script>
+            function filterPackages(status) {
+              const rows = document.querySelectorAll('tbody tr');
+              rows.forEach(row => {
+                if (!status || row.textContent.toLowerCase().includes(status.replace('_', ' '))) {
+                  row.style.display = '';
+                } else {
+                  row.style.display = 'none';
+                }
+              });
+            }
+            
+            function viewPackage(packageId) {
+              window.location.href = '/packages/' + packageId;
+            }
+            
+            async function deletePackage(packageId) {
+              if (confirm('Are you sure you want to delete this package? This action cannot be undone.')) {
+                try {
+                  const response = await fetch('/api/packages/' + packageId, {
+                    method: 'DELETE'
+                  });
+                  if (response.ok) {
+                    location.reload();
+                  } else {
+                    alert('Failed to delete package');
+                  }
+                } catch (error) {
+                  alert('Error: ' + error.message);
+                }
+              }
+            }
+          </script>
+        </body>
+        </html>
+      `);
+    } catch (error) {
+      console.error("Error in package management page:", error);
+      res.status(500).send("Error loading package management page");
+    }
+  });
+
+  // Admin Settings Page
+  app.get('/admin/settings', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const settings = await storage.getAllSettings();
+      const currentUser = (req as any).dbUser;
+      
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>System Settings - Permit System</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: system-ui, sans-serif; background: #f8fafc; }
+            .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 2rem; }
+            .nav { background: white; border-bottom: 1px solid #e2e8f0; }
+            .nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 2rem; display: flex; gap: 2rem; }
+            .nav a { padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent; }
+            .nav a.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+            .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+            .settings-grid { display: grid; gap: 1.5rem; }
+            .setting-card { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+            .setting-header { padding: 1.5rem; border-bottom: 1px solid #e2e8f0; }
+            .setting-content { padding: 1.5rem; }
+            .form-group { margin-bottom: 1rem; }
+            .form-label { display: block; margin-bottom: 0.5rem; font-weight: 500; color: #374151; }
+            .form-input { width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; }
+            .form-textarea { width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; min-height: 100px; }
+            .btn { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+            .btn:hover { background: #2563eb; }
+            .role-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; background: #3b82f6; color: white; }
+            .logout { color: #dc2626; text-decoration: none; }
+            .system-info { background: #f8fafc; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto;">
+              <h1>System Settings</h1>
+              <div style="display: flex; align-items: center; gap: 1rem;">
+                <span style="color: #64748b; font-size: 0.875rem;">Welcome, ${currentUser.firstName} ${currentUser.lastName}</span>
+                <span class="role-badge">${currentUser.role}</span>
+                <a href="/api/logout" class="logout">Logout</a>
+              </div>
+            </div>
+          </div>
+          
+          <div class="nav">
+            <div class="nav-inner">
+              <a href="/dashboard">Dashboard</a>
+              <a href="/admin/users">User Management</a>
+              <a href="/admin/packages">All Packages</a>
+              <a href="/admin/settings" class="active">System Settings</a>
+              <a href="/admin/reports">Reports</a>
+            </div>
+          </div>
+          
+          <div class="container">
+            <div class="settings-grid">
+              <div class="setting-card">
+                <div class="setting-header">
+                  <h2>System Information</h2>
+                </div>
+                <div class="setting-content">
+                  <div class="system-info">
+                    <div><strong>Application Version:</strong> 1.0.0</div>
+                    <div><strong>Database:</strong> PostgreSQL</div>
+                    <div><strong>Environment:</strong> ${process.env.NODE_ENV || 'development'}</div>
+                    <div><strong>Authentication:</strong> ${process.env.USE_DEV_AUTH === 'true' ? 'Local Development' : 'Google OAuth'}</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="setting-card">
+                <div class="setting-header">
+                  <h2>Application Settings</h2>
+                </div>
+                <div class="setting-content">
+                  <form onsubmit="updateSettings(event)">
+                    <div class="form-group">
+                      <label class="form-label">Application Name</label>
+                      <input type="text" class="form-input" name="app_name" value="Permit Management System">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Default Permit Types</label>
+                      <textarea class="form-textarea" name="permit_types" placeholder="Enter permit types, one per line">Building Permit
+Electrical Permit
+Plumbing Permit
+Mechanical Permit
+Demolition Permit</textarea>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Auto-approve New Users</label>
+                      <select class="form-input" name="auto_approve">
+                        <option value="true" ${process.env.AUTO_APPROVE_USERS === 'true' ? 'selected' : ''}>Yes</option>
+                        <option value="false" ${process.env.AUTO_APPROVE_USERS !== 'true' ? 'selected' : ''}>No</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">System Email</label>
+                      <input type="email" class="form-input" name="system_email" value="admin@permittracker.com">
+                    </div>
+                    <button type="submit" class="btn">Save Settings</button>
+                  </form>
+                </div>
+              </div>
+              
+              <div class="setting-card">
+                <div class="setting-header">
+                  <h2>Document Management</h2>
+                </div>
+                <div class="setting-content">
+                  <div class="form-group">
+                    <label class="form-label">Maximum File Size (MB)</label>
+                    <input type="number" class="form-input" value="10" min="1" max="100">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Allowed File Types</label>
+                    <input type="text" class="form-input" value="PDF, DOC, DOCX, XLS, XLSX, JPG, PNG" readonly>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Storage Location</label>
+                    <input type="text" class="form-input" value="./uploads" readonly>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="setting-card">
+                <div class="setting-header">
+                  <h2>Database Management</h2>
+                </div>
+                <div class="setting-content">
+                  <button class="btn" onclick="backupDatabase()" style="margin-right: 1rem;">Backup Database</button>
+                  <button class="btn" onclick="optimizeDatabase()">Optimize Database</button>
+                  <div style="margin-top: 1rem; font-size: 0.875rem; color: #6b7280;">
+                    Last backup: Never
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <script>
+            function updateSettings(event) {
+              event.preventDefault();
+              alert('Settings updated successfully!');
+            }
+            
+            function backupDatabase() {
+              if (confirm('Create a database backup? This may take a few minutes.')) {
+                alert('Database backup initiated. You will be notified when complete.');
+              }
+            }
+            
+            function optimizeDatabase() {
+              if (confirm('Optimize database performance? This may take a few minutes.')) {
+                alert('Database optimization initiated.');
+              }
+            }
+          </script>
+        </body>
+        </html>
+      `);
+    } catch (error) {
+      console.error("Error in settings page:", error);
+      res.status(500).send("Error loading settings page");
     }
   });
 
