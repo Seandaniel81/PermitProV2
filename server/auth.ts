@@ -96,20 +96,40 @@ export async function setupAuth(app: Express) {
     console.warn("⚠️  DEVELOPMENT MODE: OIDC not configured, using development bypass");
     
     app.get("/api/dev-login", async (req, res) => {
-      const devUser = await storage.getUser("dev-admin") || await storage.upsertUser({
-        id: "dev-admin",
-        email: "dev@localhost",
-        firstName: "Development",
-        lastName: "Admin",
-        role: "admin",
-        approvalStatus: "approved",
-        isActive: true
-      });
-      
-      req.login({ claims: { sub: "dev-admin", email: "dev@localhost" }, expires_at: Math.floor(Date.now() / 1000) + 86400 }, (err) => {
-        if (err) return res.status(500).json({ error: "Login failed" });
-        res.redirect("/");
-      });
+      try {
+        const devUser = await storage.getUser("dev-admin") || await storage.upsertUser({
+          id: "dev-admin",
+          email: "dev@localhost",
+          firstName: "Development",
+          lastName: "Admin",
+          role: "admin",
+          approvalStatus: "approved",
+          isActive: true
+        });
+        
+        console.log("Development user created/found:", devUser);
+        
+        const sessionUser = { 
+          claims: { 
+            sub: "dev-admin", 
+            email: "dev@localhost",
+            name: "Development Admin"
+          }, 
+          expires_at: Math.floor(Date.now() / 1000) + 86400 
+        };
+        
+        req.login(sessionUser, (err) => {
+          if (err) {
+            console.error("Login error:", err);
+            return res.status(500).json({ error: "Login failed", details: err.message });
+          }
+          console.log("Development login successful, redirecting to dashboard");
+          res.redirect("/dashboard");
+        });
+      } catch (error) {
+        console.error("Dev login error:", error);
+        res.status(500).json({ error: "Authentication failed", details: error instanceof Error ? error.message : String(error) });
+      }
     });
     
     app.get("/api/login", (req, res) => {
@@ -124,6 +144,15 @@ export async function setupAuth(app: Express) {
           res.redirect("/");
         });
       });
+    });
+
+    // Setup passport serialization for development mode
+    passport.serializeUser((user: any, done) => {
+      done(null, user);
+    });
+
+    passport.deserializeUser((user: any, done) => {
+      done(null, user);
     });
     
     return;
@@ -212,7 +241,31 @@ export async function setupAuth(app: Express) {
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   const user = req.user as any;
 
-  if (!req.isAuthenticated() || !user.expires_at) {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  // Development bypass mode - skip expiration check
+  if (process.env.USE_DEV_AUTH === 'true') {
+    const dbUser = await storage.getUser(user.claims.sub);
+    if (!dbUser) {
+      return res.status(401).json({ message: "User not found" });
+    }
+    
+    if (!dbUser.isActive) {
+      return res.status(403).json({ message: "Account deactivated" });
+    }
+    
+    if (dbUser.approvalStatus !== "approved") {
+      return res.status(403).json({ message: "Account not approved" });
+    }
+    
+    (req as any).dbUser = dbUser;
+    return next();
+  }
+
+  // Production mode - check token expiration
+  if (!user.expires_at) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
