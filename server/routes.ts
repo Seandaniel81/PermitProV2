@@ -58,13 +58,113 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware - use OIDC
   await setupAuth(app);
 
-  // Simple dashboard route
-  app.get('/dashboard', isAuthenticated, (req, res) => {
-    res.sendFile(path.join(__dirname, 'simple-dashboard.html'));
+  // Dashboard route - redirect authenticated users here
+  app.get('/dashboard', isAuthenticated, async (req, res) => {
+    const packages = await storage.getAllPackages();
+    const stats = await storage.getPackageStats();
+    
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Permit Management Dashboard</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: system-ui, sans-serif; background: #f8fafc; }
+          .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 2rem; }
+          .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+          .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+          .stat-card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+          .stat-number { font-size: 2rem; font-weight: bold; color: #1e40af; }
+          .stat-label { color: #64748b; font-size: 0.875rem; margin-top: 0.25rem; }
+          .packages { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+          .packages-header { padding: 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: between; align-items: center; }
+          .btn { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 6px; text-decoration: none; display: inline-block; }
+          .btn:hover { background: #2563eb; }
+          .package-grid { display: grid; gap: 1rem; padding: 1.5rem; }
+          .package-card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 1rem; }
+          .package-title { font-weight: 600; margin-bottom: 0.5rem; }
+          .package-meta { font-size: 0.875rem; color: #64748b; margin-bottom: 0.5rem; }
+          .status { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
+          .status-draft { background: #f3f4f6; color: #374151; }
+          .status-in-progress { background: #fef3c7; color: #92400e; }
+          .status-ready { background: #d1fae5; color: #065f46; }
+          .status-submitted { background: #dbeafe; color: #1e40af; }
+          .progress-bar { background: #e5e7eb; height: 4px; border-radius: 2px; margin-top: 0.5rem; }
+          .progress-fill { background: #3b82f6; height: 100%; border-radius: 2px; }
+          .logout { color: #dc2626; text-decoration: none; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto;">
+            <h1>Permit Management System</h1>
+            <a href="/api/logout" class="logout">Logout</a>
+          </div>
+        </div>
+        
+        <div class="container">
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-number">${stats.total}</div>
+              <div class="stat-label">Total Packages</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number">${stats.draft}</div>
+              <div class="stat-label">Draft</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number">${stats.inProgress}</div>
+              <div class="stat-label">In Progress</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number">${stats.readyToSubmit}</div>
+              <div class="stat-label">Ready to Submit</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number">${stats.submitted}</div>
+              <div class="stat-label">Submitted</div>
+            </div>
+          </div>
+          
+          <div class="packages">
+            <div class="packages-header">
+              <h2>Recent Packages</h2>
+              <a href="/create-package" class="btn">New Package</a>
+            </div>
+            <div class="package-grid">
+              ${packages.slice(0, 10).map(pkg => `
+                <div class="package-card">
+                  <div class="package-title">${pkg.projectName}</div>
+                  <div class="package-meta">
+                    ${pkg.permitType} • ${pkg.address}
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
+                    <span class="status status-${pkg.status.replace(/\s+/g, '-').toLowerCase()}">${pkg.status}</span>
+                    <span style="font-size: 0.75rem; color: #64748b;">
+                      ${pkg.completedDocuments}/${pkg.totalDocuments} docs
+                    </span>
+                  </div>
+                  <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${pkg.progressPercentage}%"></div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
   });
 
-  // Landing page that redirects to login
+  // Landing page - redirect authenticated users to dashboard
   app.get('/', (req, res) => {
+    if (req.isAuthenticated()) {
+      return res.redirect('/dashboard');
+    }
+    
     res.send(`
       <!DOCTYPE html>
       <html>
@@ -108,7 +208,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         <div class="container">
           <h1>Permit Package Tracker</h1>
           <p>Streamline your building permit process with comprehensive package management.</p>
-          <a href="/api/login" class="btn">Sign In with Google</a>
+          <a href="/api/login" class="btn">Sign In</a>
         </div>
       </body>
       </html>

@@ -38,6 +38,7 @@ export function getSession() {
       httpOnly: true,
       secure: config.server.environment === "production",
       maxAge: sessionTtl,
+      sameSite: config.server.environment === "production" ? "none" : "lax",
     },
   });
 }
