@@ -432,6 +432,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                         <div style="display: flex; gap: 0.5rem;">
                           ${user.approvalStatus === 'pending' ? `<button class="btn btn-sm btn-success" onclick="approveUser('${user.id}')">Approve</button>` : ''}
                           ${user.isActive ? `<button class="btn btn-sm btn-danger" onclick="deactivateUser('${user.id}')">Deactivate</button>` : `<button class="btn btn-sm btn-success" onclick="activateUser('${user.id}')">Activate</button>`}
+                          <button class="btn btn-sm btn-warning" onclick="resetPassword('${user.id}')">Reset Password</button>
                         </div>
                       </td>
                     </tr>
@@ -498,6 +499,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 }
               }
             }
+            
+            async function resetPassword(userId) {
+              if (confirm('Reset this user\'s password? They will need to use the new temporary password.')) {
+                try {
+                  const response = await fetch('/api/admin/users/' + userId + '/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                  });
+                  if (response.ok) {
+                    const result = await response.json();
+                    alert('Password reset successful! New temporary password: ' + result.tempPassword + '\\n\\nPlease save this password and share it securely with the user.');
+                  } else {
+                    alert('Failed to reset password');
+                  }
+                } catch (error) {
+                  alert('Error: ' + error.message);
+                }
+              }
+            }
           </script>
         </body>
         </html>
@@ -531,6 +551,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error updating user:", error);
       res.status(500).json({ message: "Failed to update user" });
+    }
+  });
+
+  app.post('/api/admin/users/:id/reset-password', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const tempPassword = await storage.resetUserPassword(userId);
+      res.json({ 
+        message: "Password reset successful", 
+        tempPassword: tempPassword 
+      });
+    } catch (error) {
+      console.error("Error resetting password:", error);
+      res.status(500).json({ message: "Failed to reset password" });
     }
   });
 
