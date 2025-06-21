@@ -2,7 +2,14 @@ import type { Express } from "express";
 import express from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { setupAuth, isAuthenticated, isAdmin } from "./auth";
+// Import authentication based on environment
+import { setupAuth as setupAuth0, isAuthenticated as isAuth0Authenticated, isAdmin as isAuth0Admin } from "./auth0";
+import { setupAuth as setupLocalAuth, isAuthenticated as isLocalAuthenticated, isAdmin as isLocalAdmin } from "./auth";
+
+const useAuth0 = process.env.USE_AUTH0 === 'true';
+const setupAuth = useAuth0 ? setupAuth0 : setupLocalAuth;
+const isAuthenticated = useAuth0 ? isAuth0Authenticated : isLocalAuthenticated;
+const isAdmin = useAuth0 ? isAuth0Admin : isLocalAdmin;
 import { healthMonitor } from "./health-monitor";
 import { config } from "./config";
 import multer from "multer";
