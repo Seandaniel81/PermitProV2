@@ -22,6 +22,8 @@ export interface IStorage {
   upsertUser(user: UpsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
   updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
+  updateUserPassword(id: string, hashedPassword: string): Promise<User | undefined>;
+  resetUserPassword(id: string): Promise<string>; // Returns temporary password
   
   // Settings methods
   getSetting(key: string): Promise<Setting | undefined>;
@@ -101,6 +103,8 @@ export class MemStorage implements IStorage {
   }
   async getAllUsers(): Promise<User[]> { return []; }
   async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> { return undefined; }
+  async updateUserPassword(id: string, hashedPassword: string): Promise<User | undefined> { return undefined; }
+  async resetUserPassword(id: string): Promise<string> { return "temp-password"; }
 
   // Settings methods (stub implementations)
   async getSetting(key: string): Promise<Setting | undefined> { return undefined; }
