@@ -18,7 +18,7 @@ if [ ! -f ".env" ]; then
     echo "Creating default production environment..."
     cat > .env << EOF
 NODE_ENV=production
-PORT=3000
+PORT=3001
 DATABASE_URL=file:./permit_system.db
 SESSION_SECRET=$(openssl rand -base64 32 2>/dev/null || echo "fallback-secret-$(date +%s)")
 USE_AUTH0=false
