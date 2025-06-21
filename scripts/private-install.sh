@@ -47,14 +47,29 @@ echo "📁 Creating application directory at $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
 cd "$INSTALL_DIR"
 
-# Download application (replace with actual download URL)
-echo "⬇️ Downloading application..."
-# For demo, we'll assume files are copied here
-# In production, this would download from a release URL
+# Copy current application files
+echo "⬇️ Setting up application..."
+PROJECT_DIR=""
+if [ -f "../package.json" ]; then
+    PROJECT_DIR=".."
+elif [ -f "../../package.json" ]; then
+    PROJECT_DIR="../.."
+elif [ -f "./package.json" ]; then
+    PROJECT_DIR="."
+else
+    echo "❌ Application files not found. Please run from the project directory."
+    exit 1
+fi
+
+# Copy all project files
+cp -r "$PROJECT_DIR"/* . 2>/dev/null || true
+cp -r "$PROJECT_DIR"/.[^.]* . 2>/dev/null || true
+# Remove the install directory if it was copied
+rm -rf permit-system 2>/dev/null || true
 
 # Install dependencies
 echo "📦 Installing dependencies..."
-bun install --production
+bun install
 
 # Choose database option
 echo "🗃️ Database Setup"
