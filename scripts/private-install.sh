@@ -160,7 +160,7 @@ bun run build
 
 # Run database setup
 echo "🗃️ Setting up database..."
-npm run db:push 2>/dev/null || npx drizzle-kit push
+bun run db:push
 
 # Create startup scripts
 echo "📝 Creating startup scripts..."
@@ -171,7 +171,7 @@ cat > start.sh << 'EOF'
 echo "🚀 Starting Permit Management System..."
 echo "📍 Access at: http://localhost:3000"
 echo "⏹️  Press Ctrl+C to stop"
-node dist/index.js
+bun run dist/index.js
 EOF
 chmod +x start.sh
 
@@ -181,7 +181,7 @@ cat > start.bat << 'EOF'
 echo 🚀 Starting Permit Management System...
 echo 📍 Access at: http://localhost:3000
 echo ⏹️  Press Ctrl+C to stop
-node dist/index.js
+bun run dist/index.js
 pause
 EOF
 

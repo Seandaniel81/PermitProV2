@@ -18,10 +18,10 @@ fi
 echo "📦 Updating system packages..."
 apt update && apt upgrade -y
 
-# Install Node.js 18
-echo "📦 Installing Node.js 18..."
-curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-apt-get install -y nodejs
+# Install Bun
+echo "📦 Installing Bun..."
+curl -fsSL https://bun.sh/install | bash
+export PATH="/root/.bun/bin:$PATH"
 
 # Install PostgreSQL
 echo "📦 Installing PostgreSQL..."
@@ -47,13 +47,11 @@ echo "⬇️ Downloading application..."
 
 # Install dependencies
 echo "📦 Installing application dependencies..."
-npm install
+bun install
 
 # Build application
 echo "🔨 Building application..."
-npm run build 2>/dev/null || {
-    echo "Building with vite and esbuild..."
-    npx vite build && npx esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist
+bun run build
 }
 
 # Setup database
@@ -97,7 +95,7 @@ EOF
 
 # Run database migrations
 echo "🗃️ Running database migrations..."
-npm run db:push 2>/dev/null || npx drizzle-kit push
+bun run db:push
 
 # Create systemd service
 echo "⚙️ Creating systemd service..."
@@ -110,7 +108,7 @@ After=network.target
 Type=simple
 User=www-data
 WorkingDirectory=/var/www/permit-system
-ExecStart=/usr/bin/node dist/index.js
+ExecStart=/root/.bun/bin/bun run dist/index.js
 Restart=on-failure
 RestartSec=10
 Environment=NODE_ENV=production
