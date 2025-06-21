@@ -22,17 +22,18 @@ export class SimpleSQLiteStorage implements IStorage {
   }
 
   async upsertUser(userData: any): Promise<any> {
+    const timestamp = Math.floor(Date.now() / 1000);
     const [user] = await db
       .insert(users)
       .values({
         ...userData,
-        updatedAt: Math.floor(Date.now() / 1000),
+        updatedAt: timestamp,
       })
       .onConflictDoUpdate({
         target: users.id,
         set: {
           ...userData,
-          updatedAt: Math.floor(Date.now() / 1000),
+          updatedAt: timestamp,
         },
       })
       .returning();
@@ -44,18 +45,20 @@ export class SimpleSQLiteStorage implements IStorage {
   }
 
   async updateUser(id: string, updates: any): Promise<any | undefined> {
+    const timestamp = Math.floor(Date.now() / 1000);
     const [updated] = await db
       .update(users)
-      .set({ ...updates, updatedAt: Math.floor(Date.now() / 1000) })
+      .set({ ...updates, updatedAt: timestamp })
       .where(eq(users.id, id))
       .returning();
     return updated;
   }
 
   async updateUserPassword(id: string, hashedPassword: string): Promise<any | undefined> {
+    const timestamp = Math.floor(Date.now() / 1000);
     const [updated] = await db
       .update(users)
-      .set({ passwordHash: hashedPassword, updatedAt: Math.floor(Date.now() / 1000) })
+      .set({ passwordHash: hashedPassword, updatedAt: timestamp })
       .where(eq(users.id, id))
       .returning();
     return updated;
@@ -83,21 +86,23 @@ export class SimpleSQLiteStorage implements IStorage {
   }
 
   async upsertSetting(settingData: any): Promise<any> {
+    const timestamp = Math.floor(Date.now() / 1000);
     const [setting] = await db
       .insert(settings)
-      .values({ ...settingData, updatedAt: Math.floor(Date.now() / 1000) })
+      .values({ ...settingData, updatedAt: timestamp })
       .onConflictDoUpdate({
         target: settings.key,
-        set: { ...settingData, updatedAt: Math.floor(Date.now() / 1000) },
+        set: { ...settingData, updatedAt: timestamp },
       })
       .returning();
     return setting;
   }
 
   async updateSetting(id: number, updates: any): Promise<any | undefined> {
+    const timestamp = Math.floor(Date.now() / 1000);
     const [updated] = await db
       .update(settings)
-      .set({ ...updates, updatedAt: Math.floor(Date.now() / 1000) })
+      .set({ ...updates, updatedAt: timestamp })
       .where(eq(settings.id, id))
       .returning();
     return updated;
@@ -151,21 +156,23 @@ export class SimpleSQLiteStorage implements IStorage {
   }
 
   async createPackage(packageData: any): Promise<any> {
+    const timestamp = Math.floor(Date.now() / 1000);
     const [pkg] = await db
       .insert(permitPackages)
       .values({
         ...packageData,
-        createdAt: Math.floor(Date.now() / 1000),
-        updatedAt: Math.floor(Date.now() / 1000),
+        createdAt: timestamp,
+        updatedAt: timestamp,
       })
       .returning();
     return pkg;
   }
 
   async updatePackage(id: number, updates: any): Promise<any | undefined> {
+    const timestamp = Math.floor(Date.now() / 1000);
     const [updated] = await db
       .update(permitPackages)
-      .set({ ...updates, updatedAt: Math.floor(Date.now() / 1000) })
+      .set({ ...updates, updatedAt: timestamp })
       .where(eq(permitPackages.id, id))
       .returning();
     return updated;
@@ -193,21 +200,23 @@ export class SimpleSQLiteStorage implements IStorage {
   }
 
   async createDocument(documentData: any): Promise<any> {
+    const timestamp = Math.floor(Date.now() / 1000);
     const [doc] = await db
       .insert(packageDocuments)
       .values({
         ...documentData,
-        createdAt: Math.floor(Date.now() / 1000),
-        updatedAt: Math.floor(Date.now() / 1000),
+        createdAt: timestamp,
+        updatedAt: timestamp,
       })
       .returning();
     return doc;
   }
 
   async updateDocument(id: number, updates: any): Promise<any | undefined> {
+    const timestamp = Math.floor(Date.now() / 1000);
     const [updated] = await db
       .update(packageDocuments)
-      .set({ ...updates, updatedAt: Math.floor(Date.now() / 1000) })
+      .set({ ...updates, updatedAt: timestamp })
       .where(eq(packageDocuments.id, id))
       .returning();
     return updated;
