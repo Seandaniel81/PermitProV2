@@ -65,6 +65,33 @@ export class DatabaseStorage implements IStorage {
     return updatedUser || undefined;
   }
 
+  async updateUserPassword(id: string, hashedPassword: string): Promise<User | undefined> {
+    const [updatedUser] = await db
+      .update(users)
+      .set({
+        passwordHash: hashedPassword,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, id))
+      .returning();
+
+    return updatedUser || undefined;
+  }
+
+  async resetUserPassword(id: string): Promise<string> {
+    // Generate a temporary password
+    const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8).toUpperCase();
+    
+    // Hash the temporary password
+    const bcrypt = require('bcrypt');
+    const hashedPassword = await bcrypt.hash(tempPassword, 10);
+    
+    // Update user's password
+    await this.updateUserPassword(id, hashedPassword);
+    
+    return tempPassword;
+  }
+
   // Settings methods
   async getSetting(key: string): Promise<Setting | undefined> {
     const [setting] = await db.select().from(settings).where(eq(settings.key, key));
