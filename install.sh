@@ -113,9 +113,12 @@ if [ "$DEPLOY_TYPE" = "2" ]; then
         sudo -u postgres psql -c "CREATE USER permit_user WITH PASSWORD 'secure_pass';" 2>/dev/null || true
         sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE permit_system TO permit_user;" 2>/dev/null || true
     fi
+    bun run db:push
+else
+    # For SQLite, use the SQLite-specific configuration
+    echo "Creating SQLite database..."
+    drizzle-kit push --config=drizzle.sqlite.config.ts
 fi
-
-bun run db:push
 
 # Create startup scripts
 cat > start.sh << 'EOF'
