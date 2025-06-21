@@ -120,6 +120,147 @@ else
     node setup-sqlite.js
 fi
 
+# Install and configure Apache2
+echo "Installing and configuring Apache2..."
+if ! command -v apache2 &> /dev/null; then
+    echo "Installing Apache2..."
+    sudo apt update && sudo apt install -y apache2
+fi
+
+# Enable necessary Apache modules
+echo "Enabling Apache modules..."
+sudo a2enmod proxy
+sudo a2enmod proxy_http
+sudo a2enmod proxy_balancer
+sudo a2enmod lbmethod_byrequests
+sudo a2enmod rewrite
+sudo a2enmod ssl
+sudo a2enmod headers
+
+# Configure Apache virtual host based on deployment type
+if [ "$DEPLOY_TYPE" = "2" ]; then
+    # Production Apache virtual host
+    echo "Creating production Apache virtual host..."
+    sudo tee /etc/apache2/sites-available/permit-system.conf > /dev/null << 'APACHE_EOF'
+<VirtualHost *:80>
+    ServerName localhost
+    DocumentRoot /var/www/html
+    
+    # Proxy all requests to Node.js application
+    ProxyPreserveHost On
+    ProxyPass /api/ http://localhost:3001/api/
+    ProxyPassReverse /api/ http://localhost:3001/api/
+    ProxyPass / http://localhost:3001/
+    ProxyPassReverse / http://localhost:3001/
+    
+    # Enable compression
+    <Location />
+        SetOutputFilter DEFLATE
+        SetEnvIfNoCase Request_URI \\.(?:gif|jpe?g|png)$ no-gzip dont-vary
+        SetEnvIfNoCase Request_URI \\.(?:exe|t?gz|zip|bz2|sit|rar)$ no-gzip dont-vary
+    </Location>
+    
+    # Security headers
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-Frame-Options DENY
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    
+    # Logs
+    ErrorLog ${APACHE_LOG_DIR}/permit-system-error.log
+    CustomLog ${APACHE_LOG_DIR}/permit-system-access.log combined
+</VirtualHost>
+
+# SSL Virtual Host (if SSL certificate is available)
+<IfModule mod_ssl.c>
+    <VirtualHost *:443>
+        ServerName localhost
+        DocumentRoot /var/www/html
+        
+        SSLEngine on
+        # SSLCertificateFile /path/to/certificate.crt
+        # SSLCertificateKeyFile /path/to/private.key
+        
+        # Proxy all requests to Node.js application
+        ProxyPreserveHost On
+        ProxyPass /api/ http://localhost:3001/api/
+        ProxyPassReverse /api/ http://localhost:3001/api/
+        ProxyPass / http://localhost:3001/
+        ProxyPassReverse / http://localhost:3001/
+        
+        # Security headers
+        Header always set X-Content-Type-Options nosniff
+        Header always set X-Frame-Options DENY
+        Header always set X-XSS-Protection "1; mode=block"
+        Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        
+        # Logs
+        ErrorLog ${APACHE_LOG_DIR}/permit-system-ssl-error.log
+        CustomLog ${APACHE_LOG_DIR}/permit-system-ssl-access.log combined
+    </VirtualHost>
+</IfModule>
+APACHE_EOF
+
+    # Enable the production site
+    sudo a2ensite permit-system.conf
+    
+else
+    # Development Apache virtual host
+    echo "Creating development Apache virtual host..."
+    sudo tee /etc/apache2/sites-available/permit-system-dev.conf > /dev/null << 'APACHE_EOF'
+<VirtualHost *:80>
+    ServerName localhost
+    ServerAlias 127.0.0.1
+    DocumentRoot /var/www/html
+    
+    # Proxy all requests to Node.js development server
+    ProxyPreserveHost On
+    ProxyPass /api/ http://localhost:5000/api/
+    ProxyPassReverse /api/ http://localhost:5000/api/
+    ProxyPass / http://localhost:5000/
+    ProxyPassReverse / http://localhost:5000/
+    
+    # Enable hot reload for development (WebSocket support)
+    RewriteEngine On
+    RewriteCond %{HTTP:Upgrade} websocket [NC]
+    RewriteCond %{HTTP:Connection} upgrade [NC]
+    RewriteRule ^/?(.*) "ws://localhost:5000/$1" [P,L]
+    
+    # Development headers
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-Frame-Options SAMEORIGIN
+    Header always set X-XSS-Protection "1; mode=block"
+    
+    # Logs
+    ErrorLog ${APACHE_LOG_DIR}/permit-system-dev-error.log
+    CustomLog ${APACHE_LOG_DIR}/permit-system-dev-access.log combined
+</VirtualHost>
+APACHE_EOF
+
+    # Enable the development site
+    sudo a2ensite permit-system-dev.conf
+fi
+
+# Disable default Apache site
+sudo a2dissite 000-default.conf 2>/dev/null || true
+
+# Test Apache configuration
+echo "Testing Apache configuration..."
+sudo apache2ctl configtest
+
+# Restart Apache
+echo "Restarting Apache..."
+sudo systemctl restart apache2
+sudo systemctl enable apache2
+
+echo "Apache2 configured successfully!"
+if [ "$DEPLOY_TYPE" = "2" ]; then
+    echo "Production site available at: http://localhost"
+    echo "SSL site will be available at: https://localhost (after SSL certificate setup)"
+else
+    echo "Development site available at: http://localhost"
+fi
+
 # Create startup scripts
 cat > start.sh << 'EOF'
 #!/bin/bash
