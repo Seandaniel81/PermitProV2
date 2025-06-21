@@ -206,14 +206,17 @@ setup_database() {
     fi
     
     # Run database migrations
-    npm run db:push
+    npx drizzle-kit push --config=./drizzle.config.ts
     echo "✅ Database setup complete"
 }
 
 # Function to build application
 build_application() {
     echo "🔨 Building application..."
-    npm run build
+    echo "Building client..."
+    npx vite build --silent
+    echo "Building server..."
+    npx esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist --silent
     echo "✅ Application built successfully"
 }
 

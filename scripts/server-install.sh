@@ -47,11 +47,14 @@ echo "⬇️ Downloading application..."
 
 # Install dependencies
 echo "📦 Installing application dependencies..."
-npm install --production
+npm install
 
 # Build application
 echo "🔨 Building application..."
-npm run build
+npm run build 2>/dev/null || {
+    echo "Building with vite and esbuild..."
+    npx vite build && npx esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist
+}
 
 # Setup database
 echo "🗃️ Setting up database..."
@@ -94,7 +97,7 @@ EOF
 
 # Run database migrations
 echo "🗃️ Running database migrations..."
-npm run db:push
+npm run db:push 2>/dev/null || npx drizzle-kit push
 
 # Create systemd service
 echo "⚙️ Creating systemd service..."

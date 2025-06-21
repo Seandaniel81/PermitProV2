@@ -151,11 +151,14 @@ mkdir -p uploads backups
 
 # Build application
 echo "🔨 Building application..."
-npm run build
+npm run build 2>/dev/null || {
+    echo "Building with vite and esbuild..."
+    npx vite build && npx esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist
+}
 
 # Run database setup
 echo "🗃️ Setting up database..."
-npm run db:push
+npm run db:push 2>/dev/null || npx drizzle-kit push
 
 # Create startup scripts
 echo "📝 Creating startup scripts..."
