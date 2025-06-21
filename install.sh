@@ -262,79 +262,89 @@ else
 fi
 
 # Create startup scripts
-cat > start.sh << 'EOF'
+cat > start-dev.sh << 'EOF'
 #!/bin/bash
-echo "Starting Permit Management System..."
-echo "Access at: http://localhost:3000"
-bun run dist/index.js
+echo "Starting Permit Management System (Development)"
+echo "=============================================="
+echo "Development server with hot reload"
+echo "Access via Apache at: http://localhost"
+echo "Direct access at: http://localhost:5000"
+npm run dev
 EOF
-chmod +x start.sh
+chmod +x start-dev.sh
 
-cat > start.bat << 'EOF'
-@echo off
-echo Starting Permit Management System...
-echo Access at: http://localhost:3000
-bun run dist/index.js
-pause
-EOF
+# Update existing production startup script
+cat > start-prod.sh << 'EOF'
+#!/bin/bash
+echo "Starting Permit Management System (Production)"
+echo "============================================="
 
-# Server setup
-if [ "$DEPLOY_TYPE" = "2" ]; then
-    echo "Setting up server..."
-    
-    if ! command -v nginx &> /dev/null; then
-        sudo apt install -y nginx
-    fi
-    
-    sudo tee /etc/nginx/sites-available/permit-system > /dev/null << EOF
-server {
-    listen 80;
-    server_name $DOMAIN;
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-EOF
+# Set production environment
+export NODE_ENV=production
+export PORT=3001
 
-    sudo ln -sf /etc/nginx/sites-available/permit-system /etc/nginx/sites-enabled/
-    sudo rm -f /etc/nginx/sites-enabled/default
-    
-    sudo tee /etc/systemd/system/permit-system.service > /dev/null << EOF
-[Unit]
-Description=Permit Management System
-After=network.target
-
-[Service]
-Type=simple
-User=$USER
-WorkingDirectory=$(pwd)
-ExecStart=/home/$USER/.bun/bin/bun run dist/index.js
-Restart=on-failure
-Environment=NODE_ENV=production
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    sudo systemctl enable permit-system
-    sudo systemctl start permit-system
-    sudo systemctl reload nginx
-    
-    echo ""
-    echo "Server setup complete!"
-    echo "Access at: http://$DOMAIN"
-    echo "Setup SSL: sudo apt install certbot python3-certbot-nginx && sudo certbot --nginx -d $DOMAIN"
-else
-    echo ""
-    echo "Private installation complete!"
-    echo "Start with: ./start.sh"
-    echo "Access at: http://localhost:3000"
+# Load production environment if it exists
+if [ -f ".env.production" ]; then
+    set -a
+    source .env.production
+    set +a
 fi
 
+# Create required directories
+mkdir -p uploads backups logs
+
+# Build if necessary
+if [ ! -f "dist/index.js" ]; then
+    echo "Building application..."
+    npm run build
+fi
+
+echo "Starting production server on port $PORT..."
+echo "Access via Apache at: http://localhost"
+echo "Direct access at: http://localhost:$PORT"
+node dist/index.js
+EOF
+chmod +x start-prod.sh
+
+echo ""
+echo "=========================================="
+echo "PERMIT MANAGEMENT SYSTEM SETUP COMPLETE!"
+echo "=========================================="
+echo ""
+echo "Apache2 has been configured and is running"
+echo ""
+if [ "$DEPLOY_TYPE" = "2" ]; then
+    echo "PRODUCTION DEPLOYMENT:"
+    echo "• Apache virtual host: permit-system.conf"
+    echo "• Main access: http://localhost (via Apache)"
+    echo "• Direct access: http://localhost:3001"
+    echo "• Database: PostgreSQL"
+    echo "• Start server: ./start-prod.sh"
+    echo "• SSL ready (configure certificates in Apache)"
+    echo ""
+    echo "To setup SSL certificate:"
+    echo "sudo apt install certbot python3-certbot-apache"
+    echo "sudo certbot --apache"
+else
+    echo "DEVELOPMENT/PRIVATE DEPLOYMENT:"
+    echo "• Apache virtual host: permit-system-dev.conf"
+    echo "• Main access: http://localhost (via Apache)"
+    echo "• Direct access: http://localhost:5000"
+    echo "• Database: SQLite (permit_system.db)"
+    echo "• Start development: ./start-dev.sh"
+    echo "• Start production: ./start-prod.sh"
+fi
+echo ""
+echo "Default admin login: admin@localhost / admin123"
+echo ""
+echo "Available startup scripts:"
+echo "• ./start-dev.sh  - Development mode with hot reload"
+echo "• ./start-prod.sh - Production mode"
+echo ""
+echo "Apache management:"
+echo "• Status: sudo systemctl status apache2"
+echo "• Restart: sudo systemctl restart apache2"
+echo "• Logs: sudo tail -f /var/log/apache2/permit-system*-error.log"
 echo ""
 echo "Installation finished!"
 echo "Configuration: .env"
