@@ -5,13 +5,3 @@ auto = "fallback"
 [install.scopes]
 # Trust all scopes for faster installs
 "@*" = { registry = "https://registry.npmjs.org/" }
-
-[run]
-# Use bun for running scripts
-shell = ["bun", "run"]
-
-[build]
-# Bun build configuration
-target = "bun"
-minify = true
-sourcemap = true
