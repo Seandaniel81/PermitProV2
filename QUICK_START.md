@@ -13,9 +13,11 @@ curl -fsSL https://raw.githubusercontent.com/yourdomain/permit-system/main/scrip
 For local network use:
 
 ```bash
-git clone <repository-url>
-cd permit-system
-./scripts/deploy.sh
+# Simple installation (recommended)
+./install.sh
+
+# Or detailed installation
+./scripts/install-standalone.sh
 ```
 
 ### Option 3: Docker Deployment
