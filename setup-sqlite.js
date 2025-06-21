@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
-const fs = require('fs');
-const path = require('path');
-const Database = require('better-sqlite3');
+import fs from 'fs';
+import path from 'path';
+import Database from 'better-sqlite3';
+import bcrypt from 'bcrypt';
 
 console.log('Setting up SQLite database...');
 
@@ -99,7 +100,6 @@ db.exec(`
 
 // Insert default admin user
 console.log('Creating default admin user...');
-const bcrypt = require('bcrypt');
 const adminPassword = bcrypt.hashSync('admin123', 10);
 
 db.prepare(`
