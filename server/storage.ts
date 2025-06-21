@@ -18,9 +18,12 @@ import {
 export interface IStorage {
   // User methods
   getUser(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
   updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
+  updateUserPassword(id: string, hashedPassword: string): Promise<User | undefined>;
+  resetUserPassword(id: string): Promise<string>; // Returns temporary password
   
   // Settings methods
   getSetting(key: string): Promise<Setting | undefined>;
@@ -76,11 +79,32 @@ export class MemStorage implements IStorage {
 
   // User management methods (stub implementations)
   async getUser(id: string): Promise<User | undefined> { return undefined; }
+  async getUserByEmail(email: string): Promise<User | undefined> { return undefined; }
   async upsertUser(userData: UpsertUser): Promise<User> { 
-    return { id: '1', email: '', firstName: '', lastName: '', role: 'user', isActive: true, createdAt: new Date(), updatedAt: new Date() }; 
+    return { 
+      id: '1', 
+      email: userData.email || '', 
+      passwordHash: userData.passwordHash || '',
+      firstName: userData.firstName || '', 
+      lastName: userData.lastName || '', 
+      profileImageUrl: userData.profileImageUrl || null,
+      role: userData.role || 'user', 
+      isActive: userData.isActive || true, 
+      approvalStatus: userData.approvalStatus || 'approved',
+      approvedBy: userData.approvedBy || null,
+      approvedAt: userData.approvedAt || null,
+      rejectionReason: userData.rejectionReason || null,
+      company: userData.company || null,
+      phone: userData.phone || null,
+      lastLoginAt: userData.lastLoginAt || null,
+      createdAt: new Date(), 
+      updatedAt: new Date() 
+    }; 
   }
   async getAllUsers(): Promise<User[]> { return []; }
   async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> { return undefined; }
+  async updateUserPassword(id: string, hashedPassword: string): Promise<User | undefined> { return undefined; }
+  async resetUserPassword(id: string): Promise<string> { return "temp-password"; }
 
   // Settings methods (stub implementations)
   async getSetting(key: string): Promise<Setting | undefined> { return undefined; }
@@ -315,5 +339,26 @@ export class MemStorage implements IStorage {
 }
 
 import { DatabaseStorage } from "./database-storage";
+import { SimpleSQLiteStorage } from "./simple-sqlite-storage";
 
-export const storage = new DatabaseStorage();
+// Dynamically choose storage based on database type
+function createStorage(): IStorage {
+  if (!process.env.DATABASE_URL) {
+    console.warn("No DATABASE_URL found, using in-memory storage");
+    return new MemStorage();
+  }
+  
+  const isPostgreSQL = process.env.DATABASE_URL.startsWith('postgresql://') || process.env.DATABASE_URL.startsWith('postgres://');
+  const isSQLite = process.env.DATABASE_URL.startsWith('file:') || process.env.DATABASE_URL.endsWith('.db');
+  
+  if (isPostgreSQL) {
+    return new DatabaseStorage();
+  } else if (isSQLite) {
+    return new SimpleSQLiteStorage();
+  } else {
+    console.warn("Unknown database type, using in-memory storage");
+    return new MemStorage();
+  }
+}
+
+export const storage = createStorage();

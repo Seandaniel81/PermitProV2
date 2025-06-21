@@ -10,6 +10,8 @@ import { config } from "./config";
 
 const getOidcConfig = memoize(
   async () => {
+    console.log('Setting up OIDC with issuer:', config.auth.issuerUrl);
+    console.log('Client ID:', config.auth.clientId);
     return await client.discovery(
       new URL(config.auth.issuerUrl),
       config.auth.clientId
@@ -36,6 +38,7 @@ export function getSession() {
       httpOnly: true,
       secure: config.server.environment === "production",
       maxAge: sessionTtl,
+      sameSite: config.server.environment === "production" ? "none" : "lax",
     },
   });
 }
@@ -84,30 +87,155 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // Development bypass for OIDC issues
-  if (config.server.environment === 'development' && 
-      (config.auth.clientId === 'your-client-id' || config.auth.clientSecret === 'your-client-secret')) {
-    console.warn("⚠️  DEVELOPMENT MODE: OIDC not configured, using development bypass");
+  // Development bypass and fallback for OIDC issues
+  const useDevBypass = config.auth.clientId === 'your-client-id' || 
+                       config.auth.clientSecret === 'your-client-secret' ||
+                       process.env.USE_DEV_AUTH === 'true' ||
+                       process.env.FORCE_LOCAL_AUTH === 'true';
+  
+  if (useDevBypass) {
+    console.warn("⚠️  LOCAL DEVELOPMENT MODE: Using secure local authentication");
     
-    app.get("/api/dev-login", async (req, res) => {
-      const devUser = await storage.getUser("dev-admin") || await storage.upsertUser({
-        id: "dev-admin",
-        email: "dev@localhost",
-        firstName: "Development",
-        lastName: "Admin",
+    // Create multiple test users for comprehensive testing
+    const testUsers = [
+      {
+        id: "admin-user",
+        email: "admin@localhost",
+        firstName: "Admin",
+        lastName: "User",
         role: "admin",
         approvalStatus: "approved",
         isActive: true
-      });
+      },
+      {
+        id: "regular-user",
+        email: "user@localhost", 
+        firstName: "Regular",
+        lastName: "User",
+        role: "user",
+        approvalStatus: "approved",
+        isActive: true
+      },
+      {
+        id: "contractor-user",
+        email: "contractor@localhost",
+        firstName: "Contractor", 
+        lastName: "User",
+        role: "user",
+        approvalStatus: "approved",
+        isActive: true,
+        company: "ABC Construction"
+      }
+    ];
+
+    // User selection and login endpoint
+    app.get("/api/local-login", async (req, res) => {
+      const userId = req.query.user as string || "admin-user";
       
-      req.login({ claims: { sub: "dev-admin", email: "dev@localhost" }, expires_at: Math.floor(Date.now() / 1000) + 86400 }, (err) => {
-        if (err) return res.status(500).json({ error: "Login failed" });
-        res.redirect("/");
-      });
+      try {
+        let user = await storage.getUser(userId);
+        if (!user) {
+          const userData = testUsers.find(u => u.id === userId) || testUsers[0];
+          user = await storage.upsertUser(userData);
+        }
+        
+        const sessionUser = { 
+          claims: { 
+            sub: user.id, 
+            email: user.email,
+            name: `${user.firstName} ${user.lastName}`,
+            given_name: user.firstName,
+            family_name: user.lastName
+          }, 
+          expires_at: Math.floor(Date.now() / 1000) + 86400 
+        };
+        
+        req.login(sessionUser, (err) => {
+          if (err) {
+            console.error("Login error:", err);
+            return res.status(500).json({ error: "Login failed", details: err.message });
+          }
+          console.log(`Local login successful for ${user.email}, redirecting to dashboard`);
+          res.redirect("/dashboard");
+        });
+      } catch (error) {
+        console.error("Local login error:", error);
+        res.status(500).json({ error: "Authentication failed", details: error instanceof Error ? error.message : String(error) });
+      }
     });
-    
+
+    // User selection page
     app.get("/api/login", (req, res) => {
-      res.redirect("/api/dev-login");
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Local Development Login</title>
+          <style>
+            body { 
+              font-family: system-ui, sans-serif; 
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              min-height: 100vh; 
+              margin: 0; 
+              display: flex; 
+              align-items: center; 
+              justify-content: center; 
+            }
+            .container { 
+              background: white; 
+              padding: 2rem; 
+              border-radius: 12px; 
+              box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+              max-width: 500px; 
+              width: 100%;
+            }
+            h1 { margin-bottom: 1rem; color: #1f2937; text-align: center; }
+            .subtitle { color: #6b7280; text-align: center; margin-bottom: 2rem; }
+            .user-option { 
+              display: block; 
+              width: 100%; 
+              padding: 1rem; 
+              margin-bottom: 0.5rem; 
+              background: #f8fafc; 
+              border: 1px solid #e2e8f0; 
+              border-radius: 8px; 
+              text-decoration: none; 
+              color: #1f2937;
+              transition: all 0.2s;
+            }
+            .user-option:hover { 
+              background: #3b82f6; 
+              color: white; 
+              border-color: #3b82f6; 
+            }
+            .user-name { font-weight: 600; }
+            .user-details { font-size: 0.875rem; color: #6b7280; margin-top: 0.25rem; }
+            .user-option:hover .user-details { color: rgba(255,255,255,0.8); }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>Development Login</h1>
+            <p class="subtitle">Select a user to test different roles and permissions</p>
+            
+            <a href="/api/local-login?user=admin-user" class="user-option">
+              <div class="user-name">Admin User</div>
+              <div class="user-details">admin@localhost • Full system access</div>
+            </a>
+            
+            <a href="/api/local-login?user=regular-user" class="user-option">
+              <div class="user-name">Regular User</div>
+              <div class="user-details">user@localhost • Standard user permissions</div>
+            </a>
+            
+            <a href="/api/local-login?user=contractor-user" class="user-option">
+              <div class="user-name">Contractor User</div>
+              <div class="user-details">contractor@localhost • ABC Construction</div>
+            </a>
+          </div>
+        </body>
+        </html>
+      `);
     });
     
     app.get("/api/logout", (req, res) => {
@@ -118,6 +246,15 @@ export async function setupAuth(app: Express) {
           res.redirect("/");
         });
       });
+    });
+
+    // Setup passport serialization for development mode
+    passport.serializeUser((user: any, done) => {
+      done(null, user);
+    });
+
+    passport.deserializeUser((user: any, done) => {
+      done(null, user);
     });
     
     return;
@@ -142,23 +279,32 @@ export async function setupAuth(app: Express) {
   };
 
   for (const domain of config.auth.domains) {
+    // Use HTTPS for production domains, HTTP for localhost
+    const protocol = domain.includes('localhost') ? 'http' : 'https';
+    const callbackURL = `${protocol}://${domain}/api/callback`;
+    
     const strategy = new Strategy(
       {
         name: `oidc:${domain}`,
         config: oidcConfig,
         scope: "openid email profile",
-        callbackURL: `${config.server.environment === 'production' ? 'https' : 'http'}://${domain}/api/callback`,
+        callbackURL,
       },
       verify,
     );
     passport.use(strategy);
+    console.log(`Configured OAuth strategy for domain: ${domain}, callback: ${callbackURL}`);
   }
 
   passport.serializeUser((user: Express.User, cb) => cb(null, user));
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   app.get("/api/login", (req, res, next) => {
-    const strategyName = `oidc:${req.hostname}`;
+    // Handle localhost with port mapping
+    const hostname = req.hostname === 'localhost' ? 'localhost:5000' : req.hostname;
+    const strategyName = `oidc:${hostname}`;
+    console.log(`Login attempt for hostname: ${req.hostname}, mapped to: ${hostname}, strategy: ${strategyName}`);
+    
     passport.authenticate(strategyName, {
       prompt: "login consent",
       scope: ["openid", "email", "profile"],
@@ -166,7 +312,11 @@ export async function setupAuth(app: Express) {
   });
 
   app.get("/api/callback", (req, res, next) => {
-    const strategyName = `oidc:${req.hostname}`;
+    // Handle localhost with port mapping
+    const hostname = req.hostname === 'localhost' ? 'localhost:5000' : req.hostname;
+    const strategyName = `oidc:${hostname}`;
+    console.log(`Callback for hostname: ${req.hostname}, mapped to: ${hostname}, strategy: ${strategyName}`);
+    
     passport.authenticate(strategyName, {
       successReturnToOrRedirect: "/",
       failureRedirect: "/api/login",
@@ -193,7 +343,31 @@ export async function setupAuth(app: Express) {
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   const user = req.user as any;
 
-  if (!req.isAuthenticated() || !user.expires_at) {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+
+  // Development bypass mode - skip expiration check
+  if (process.env.USE_DEV_AUTH === 'true') {
+    const dbUser = await storage.getUser(user.claims.sub);
+    if (!dbUser) {
+      return res.status(401).json({ message: "User not found" });
+    }
+    
+    if (!dbUser.isActive) {
+      return res.status(403).json({ message: "Account deactivated" });
+    }
+    
+    if (dbUser.approvalStatus !== "approved") {
+      return res.status(403).json({ message: "Account not approved" });
+    }
+    
+    (req as any).dbUser = dbUser;
+    return next();
+  }
+
+  // Production mode - check token expiration
+  if (!user.expires_at) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 

@@ -63,12 +63,12 @@ DATABASE_URL=${DATABASE_URL}
 # Authentication Configuration  
 SESSION_SECRET=${SESSION_SECRET}
 
-# OpenID Connect Configuration (optional - enables development bypass if not set)
-# OIDC_ISSUER_URL=https://accounts.google.com
-# OIDC_CLIENT_ID=your-client-id
-# OIDC_CLIENT_SECRET=your-client-secret
-# OIDC_REDIRECT_URI=https://yourdomain.com/api/callback
-# ALLOWED_DOMAINS=yourdomain.com
+# OpenID Connect Configuration - Google OAuth
+OIDC_ISSUER_URL=https://accounts.google.com
+OIDC_CLIENT_ID=625523063326-hnq3mak1r35pfv739fa7ppcekthqas0a.apps.googleusercontent.com
+OIDC_CLIENT_SECRET=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
+OIDC_REDIRECT_URI=http://localhost:5000/api/callback
+ALLOWED_DOMAINS=localhost,swonger.tplinkdns.com
 
 # Application Settings
 NODE_ENV=production
@@ -79,7 +79,7 @@ UPLOAD_DIR=./uploads
 MAX_FILE_SIZE=10485760
 
 # Auto-approve users (set to true for development)
-AUTO_APPROVE_USERS=false
+AUTO_APPROVE_USERS=true
 EOF
     
     echo "✅ Environment configuration created"

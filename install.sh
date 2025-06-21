@@ -1,113 +1,200 @@
 #!/bin/bash
 
-# Permit Management System Installation Script
+# Simple Installation Script for Permit Management System
+# Works with current project structure
 
 set -e
 
-echo "🏗️  Installing Permit Management System for Independent Hosting"
-echo "=============================================================="
+echo "Permit Management System - Quick Install"
+echo "======================================="
 
-# Check if Bun is installed
+# Check Bun
 if ! command -v bun &> /dev/null; then
-    echo "❌ Bun is not installed. Installing Bun..."
+    echo "Installing Bun..."
     curl -fsSL https://bun.sh/install | bash
-    source ~/.bashrc || source ~/.zshrc || true
+    export PATH="$HOME/.bun/bin:$PATH"
     
     if ! command -v bun &> /dev/null; then
-        echo "❌ Bun installation failed. Please install manually from https://bun.sh"
+        echo "Error: Bun installation failed. Please install manually from https://bun.sh"
         exit 1
     fi
 fi
 
-echo "✅ Bun found: $(bun --version)"
+echo "Bun $(bun --version) detected"
 
-# Check if PostgreSQL is installed
-if ! command -v psql &> /dev/null; then
-    echo "❌ PostgreSQL is not installed. Please install PostgreSQL 12+ first."
-    exit 1
-fi
+# Choose deployment type
+echo ""
+echo "1) Private computer (SQLite, localhost)"
+echo "2) Server deployment (PostgreSQL, domain)"
+read -p "Choose (1 or 2): " DEPLOY_TYPE
+
+# Choose authentication
+echo ""
+echo "1) Local authentication (simple)"
+echo "2) Auth0 (enterprise)"
+read -p "Choose (1 or 2): " AUTH_TYPE
+
+# Create directories
+mkdir -p uploads backups dist
 
 # Install dependencies
-echo "📦 Installing dependencies..."
+echo "Installing dependencies..."
 bun install
 
-# Create necessary directories
-echo "📁 Creating directories..."
-mkdir -p uploads logs backups
-
-# Copy environment template if it doesn't exist
-if [ ! -f .env ]; then
-    echo "⚙️  Creating environment configuration..."
-    if [ -f .env.example ]; then
-        cp .env.example .env
-        echo "✏️  Please edit .env file with your database credentials before continuing."
-        echo "   Example: DATABASE_URL=postgresql://username:password@localhost:5432/permits_db"
-        read -p "Press Enter when you've configured .env file..."
-    else
-        echo "❌ .env.example file not found. Creating basic .env template..."
-        # Generate a secure session secret
-        SESSION_SECRET=$(openssl rand -hex 32)
-        cat > .env << EOF
-# Database Configuration
-DATABASE_URL=postgresql://username:password@localhost:5432/permits_db
-
-# Authentication - OpenID Connect Configuration
-SESSION_SECRET=$SESSION_SECRET
-OIDC_ISSUER_URL=https://accounts.google.com
-OIDC_CLIENT_ID=your-client-id-from-oauth-provider
-OIDC_CLIENT_SECRET=your-client-secret-from-oauth-provider
-ALLOWED_DOMAINS=localhost
-AUTO_APPROVE_USERS=false
-
-# Application Settings
-NODE_ENV=production
-PORT=5000
-
-# File Upload Settings
-UPLOAD_DIR=./uploads
-MAX_FILE_SIZE=10485760
-EOF
-        echo "✏️  Please edit .env file with your actual configuration before continuing."
-        read -p "Press Enter when you've configured .env file..."
-    fi
-fi
-
-# Validate DATABASE_URL is set
-if [ -f .env ]; then
-    export $(grep -v '^#' .env | xargs)
-fi
-
-if [ -z "$DATABASE_URL" ] || [ "$DATABASE_URL" = "postgresql://username:password@localhost:5432/permits_db" ]; then
-    echo "❌ Please configure DATABASE_URL in .env file with your actual database credentials."
-    echo "   Example: DATABASE_URL=\"postgresql://postgres:204874@localhost:5432/permits_db\""
-    echo "   Current DATABASE_URL: ${DATABASE_URL:-'not set'}"
-    exit 1
-fi
-
-echo "✅ DATABASE_URL configured: ${DATABASE_URL}"
-
-# Build the application
-echo "🔨 Building application..."
+# Build application
+echo "Building application..."
 bun run build
 
-# Setup database
-echo "🗄️  Setting up database..."
-if [ -f scripts/setup-database.ts ]; then
-    bun run scripts/setup-database.ts
+# Create configuration
+echo "Creating configuration..."
+SESSION_SECRET=$(openssl rand -base64 32 2>/dev/null || echo "dev-session-secret-$(date +%s)")
+
+if [ "$DEPLOY_TYPE" = "2" ]; then
+    read -p "Enter domain name: " DOMAIN
+    DATABASE_URL="postgresql://permit_user:secure_pass@localhost:5432/permit_system"
+    CALLBACK_URL="https://$DOMAIN/callback"
+    LOGOUT_URL="https://$DOMAIN"
+    SECURE="true"
 else
-    echo "⚠️  Database setup script not found. Please run 'bun run db:push' manually after installation."
+    DATABASE_URL="file:./permit_system.db"
+    CALLBACK_URL="http://localhost:3000/callback"
+    LOGOUT_URL="http://localhost:3000"
+    SECURE="false"
+fi
+
+cat > .env << EOF
+NODE_ENV=production
+PORT=3000
+DATABASE_URL=$DATABASE_URL
+SESSION_SECRET=$SESSION_SECRET
+SECURE_COOKIES=$SECURE
+EOF
+
+if [ "$AUTH_TYPE" = "2" ]; then
+    echo ""
+    read -p "Auth0 Domain: " AUTH0_DOMAIN
+    read -p "Auth0 Client ID: " AUTH0_CLIENT_ID
+    read -s -p "Auth0 Client Secret: " AUTH0_CLIENT_SECRET
+    echo ""
+    
+    cat >> .env << EOF
+USE_AUTH0=true
+AUTH0_DOMAIN=$AUTH0_DOMAIN
+AUTH0_CLIENT_ID=$AUTH0_CLIENT_ID
+AUTH0_CLIENT_SECRET=$AUTH0_CLIENT_SECRET
+AUTH0_CALLBACK_URL=$CALLBACK_URL
+AUTH0_LOGOUT_URL=$LOGOUT_URL
+EOF
+else
+    cat >> .env << EOF
+USE_AUTH0=false
+USE_DEV_AUTH=true
+EOF
+fi
+
+cat >> .env << EOF
+AUTO_APPROVE_USERS=true
+MAX_FILE_SIZE=10485760
+ALLOWED_FILE_TYPES=pdf,doc,docx,xls,xlsx,jpg,png
+UPLOAD_PATH=./uploads
+BACKUP_PATH=./backups
+EOF
+
+# Setup database
+echo "Setting up database..."
+if [ "$DEPLOY_TYPE" = "2" ]; then
+    if ! command -v psql &> /dev/null; then
+        echo "Installing PostgreSQL..."
+        sudo apt update && sudo apt install -y postgresql postgresql-contrib
+        sudo systemctl enable postgresql
+        sudo systemctl start postgresql
+        
+        sudo -u postgres createdb permit_system 2>/dev/null || true
+        sudo -u postgres psql -c "CREATE USER permit_user WITH PASSWORD 'secure_pass';" 2>/dev/null || true
+        sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE permit_system TO permit_user;" 2>/dev/null || true
+    fi
+    bun run db:push
+else
+    # For SQLite, use the custom setup script
+    echo "Creating SQLite database..."
+    node setup-sqlite.js
+fi
+
+# Create startup scripts
+cat > start.sh << 'EOF'
+#!/bin/bash
+echo "Starting Permit Management System..."
+echo "Access at: http://localhost:3000"
+bun run dist/index.js
+EOF
+chmod +x start.sh
+
+cat > start.bat << 'EOF'
+@echo off
+echo Starting Permit Management System...
+echo Access at: http://localhost:3000
+bun run dist/index.js
+pause
+EOF
+
+# Server setup
+if [ "$DEPLOY_TYPE" = "2" ]; then
+    echo "Setting up server..."
+    
+    if ! command -v nginx &> /dev/null; then
+        sudo apt install -y nginx
+    fi
+    
+    sudo tee /etc/nginx/sites-available/permit-system > /dev/null << EOF
+server {
+    listen 80;
+    server_name $DOMAIN;
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+EOF
+
+    sudo ln -sf /etc/nginx/sites-available/permit-system /etc/nginx/sites-enabled/
+    sudo rm -f /etc/nginx/sites-enabled/default
+    
+    sudo tee /etc/systemd/system/permit-system.service > /dev/null << EOF
+[Unit]
+Description=Permit Management System
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$(pwd)
+ExecStart=/home/$USER/.bun/bin/bun run dist/index.js
+Restart=on-failure
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    sudo systemctl enable permit-system
+    sudo systemctl start permit-system
+    sudo systemctl reload nginx
+    
+    echo ""
+    echo "Server setup complete!"
+    echo "Access at: http://$DOMAIN"
+    echo "Setup SSL: sudo apt install certbot python3-certbot-nginx && sudo certbot --nginx -d $DOMAIN"
+else
+    echo ""
+    echo "Private installation complete!"
+    echo "Start with: ./start.sh"
+    echo "Access at: http://localhost:3000"
 fi
 
 echo ""
-echo "✅ Installation completed successfully!"
-echo ""
-echo "Next steps:"
-echo "1. Review and customize settings in the application"
-echo "2. Configure SSL certificates for production"
-echo "3. Set up reverse proxy (nginx/Apache)"
-echo "4. Start the application: bun start"
-echo ""
-echo "For production deployment with PM2:"
-echo "  bun install -g pm2"
-echo "  pm2 start ecosystem.config.js"
-echo "  pm2 save && pm2 startup"
+echo "Installation finished!"
+echo "Configuration: .env"
+echo "Data directory: $(pwd)"

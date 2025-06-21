@@ -12,6 +12,7 @@ import { useForm } from "react-hook-form";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatDate } from "@/lib/types";
+import { DocumentViewer } from "@/components/document-viewer";
 import type { PackageDocument } from "@/lib/types";
 
 interface DocumentChecklistProps {
@@ -27,6 +28,7 @@ interface AddDocumentForm {
 export function DocumentChecklist({ packageId, documents }: DocumentChecklistProps) {
   const [isAddingDocument, setIsAddingDocument] = useState(false);
   const [uploadingDocId, setUploadingDocId] = useState<number | null>(null);
+  const [viewingDocument, setViewingDocument] = useState<{ filename: string; documentName: string } | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -447,6 +449,14 @@ export function DocumentChecklist({ packageId, documents }: DocumentChecklistPro
           </div>
         )}
       </CardContent>
+      
+      {/* Document Viewer */}
+      <DocumentViewer
+        filename={viewingDocument?.filename || null}
+        documentName={viewingDocument?.documentName || ""}
+        isOpen={!!viewingDocument}
+        onClose={() => setViewingDocument(null)}
+      />
     </Card>
   );
 }

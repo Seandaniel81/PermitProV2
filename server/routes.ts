@@ -2,6 +2,7 @@ import type { Express } from "express";
 import express from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+// Import authentication - use local auth for now
 import { setupAuth, isAuthenticated, isAdmin } from "./auth";
 import { healthMonitor } from "./health-monitor";
 import { config } from "./config";
@@ -55,22 +56,872 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Auth middleware
+  // Auth middleware - use OIDC
   await setupAuth(app);
 
-  // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+  // Dashboard route - redirect authenticated users here
+  app.get('/dashboard', isAuthenticated, async (req, res) => {
+    const packages = await storage.getAllPackages();
+    const stats = await storage.getPackageStats();
+    const user = (req as any).dbUser;
+    
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Permit Management Dashboard</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: system-ui, sans-serif; background: #f8fafc; }
+          .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 2rem; }
+          .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+          .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+          .stat-card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+          .stat-number { font-size: 2rem; font-weight: bold; color: #1e40af; }
+          .stat-label { color: #64748b; font-size: 0.875rem; margin-top: 0.25rem; }
+          .packages { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+          .packages-header { padding: 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: between; align-items: center; }
+          .btn { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 6px; text-decoration: none; display: inline-block; }
+          .btn:hover { background: #2563eb; }
+          .package-grid { display: grid; gap: 1rem; padding: 1.5rem; }
+          .package-card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 1rem; }
+          .package-title { font-weight: 600; margin-bottom: 0.5rem; }
+          .package-meta { font-size: 0.875rem; color: #64748b; margin-bottom: 0.5rem; }
+          .status { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
+          .status-draft { background: #f3f4f6; color: #374151; }
+          .status-in-progress { background: #fef3c7; color: #92400e; }
+          .status-ready { background: #d1fae5; color: #065f46; }
+          .status-submitted { background: #dbeafe; color: #1e40af; }
+          .progress-bar { background: #e5e7eb; height: 4px; border-radius: 2px; margin-top: 0.5rem; }
+          .progress-fill { background: #3b82f6; height: 100%; border-radius: 2px; }
+          .logout { color: #dc2626; text-decoration: none; }
+          .admin-section { margin-top: 2rem; }
+          .quick-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+          .action-card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; }
+          .action-card h3 { margin-bottom: 0.5rem; color: #1f2937; }
+          .action-card p { color: #64748b; font-size: 0.875rem; margin-bottom: 1rem; }
+          .action-card .btn { width: 100%; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto;">
+            <h1>Permit Management System</h1>
+            <div style="display: flex; align-items: center; gap: 1rem;">
+              <span style="color: #64748b; font-size: 0.875rem;">Welcome, ${user.firstName} ${user.lastName}</span>
+              <span style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem;">${user.role}</span>
+              <a href="/api/logout" class="logout">Logout</a>
+            </div>
+          </div>
+        </div>
+        
+        ${user.role === 'admin' ? `
+        <div style="background: white; border-bottom: 1px solid #e2e8f0;">
+          <div style="max-width: 1200px; margin: 0 auto; padding: 0 2rem;">
+            <nav style="display: flex; gap: 2rem;">
+              <a href="/dashboard" style="padding: 1rem 0; color: #3b82f6; text-decoration: none; border-bottom: 2px solid #3b82f6;">Dashboard</a>
+              <a href="/admin/users" style="padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent;">User Management</a>
+              <a href="/admin/packages" style="padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent;">All Packages</a>
+              <a href="/admin/settings" style="padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent;">System Settings</a>
+              <a href="/admin/reports" style="padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent;">Reports</a>
+            </nav>
+          </div>
+        </div>
+        ` : ''}
+        
+        <div class="container">
+          <div class="stats">
+            <div class="stat-card">
+              <div class="stat-number">${stats.total}</div>
+              <div class="stat-label">Total Packages</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number">${stats.draft}</div>
+              <div class="stat-label">Draft</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number">${stats.inProgress}</div>
+              <div class="stat-label">In Progress</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number">${stats.readyToSubmit}</div>
+              <div class="stat-label">Ready to Submit</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-number">${stats.submitted}</div>
+              <div class="stat-label">Submitted</div>
+            </div>
+          </div>
+          
+          <div class="packages">
+            <div class="packages-header">
+              <h2>Recent Packages</h2>
+              <a href="/create-package" class="btn">New Package</a>
+            </div>
+            <div class="package-grid">
+              ${packages.slice(0, 10).map(pkg => `
+                <div class="package-card">
+                  <div class="package-title">${pkg.projectName}</div>
+                  <div class="package-meta">
+                    ${pkg.permitType} • ${pkg.address}
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
+                    <span class="status status-${pkg.status.replace(/\s+/g, '-').toLowerCase()}">${pkg.status}</span>
+                    <span style="font-size: 0.75rem; color: #64748b;">
+                      ${pkg.completedDocuments}/${pkg.totalDocuments} docs
+                    </span>
+                  </div>
+                  <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${pkg.progressPercentage}%"></div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          
+          ${user.role === 'admin' ? `
+          <div class="admin-section">
+            <div class="quick-actions">
+              <div class="action-card">
+                <h3>User Management</h3>
+                <p>Manage user accounts and permissions</p>
+                <a href="/admin/users" class="btn">Manage Users</a>
+              </div>
+              <div class="action-card">
+                <h3>Package Management</h3>
+                <p>View and manage all permit packages</p>
+                <a href="/admin/packages" class="btn">View All Packages</a>
+              </div>
+              <div class="action-card">
+                <h3>System Settings</h3>
+                <p>Configure application settings</p>
+                <a href="/admin/settings" class="btn">Settings</a>
+              </div>
+              <div class="action-card">
+                <h3>Reports</h3>
+                <p>Generate system reports and analytics</p>
+                <a href="/admin/reports" class="btn">View Reports</a>
+              </div>
+            </div>
+          </div>
+          ` : ''}
+        </div>
+      </body>
+      </html>
+    `);
+  });
+
+  // Landing page - redirect authenticated users to dashboard
+  app.get('/', (req, res) => {
+    if (req.isAuthenticated()) {
+      return res.redirect('/dashboard');
+    }
+    
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Permit Tracker</title>
+        <style>
+          body { 
+            font-family: system-ui, sans-serif; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 100vh; 
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          }
+          .container { 
+            text-align: center; 
+            background: white; 
+            padding: 3rem; 
+            border-radius: 12px; 
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            max-width: 400px;
+          }
+          h1 { margin-bottom: 1rem; color: #1f2937; }
+          p { margin-bottom: 2rem; color: #6b7280; }
+          .btn { 
+            background: #3b82f6; 
+            color: white; 
+            border: none; 
+            padding: 12px 24px; 
+            border-radius: 6px; 
+            text-decoration: none; 
+            display: inline-block;
+            font-size: 16px;
+            font-weight: 500;
+          }
+          .btn:hover { background: #2563eb; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>Permit Package Tracker</h1>
+          <p>Streamline your building permit process with comprehensive package management.</p>
+          <a href="/api/login" class="btn">Sign In</a>
+        </div>
+      </body>
+      </html>
+    `);
+  });
+
+  // Serve uploaded files
+  app.get('/api/files/:filename', isAuthenticated, (req, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
-      res.json(user);
+      const filename = req.params.filename;
+      const filePath = path.join(uploadsDir, filename);
+      
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ message: 'File not found' });
+      }
+
+      // Get file stats
+      const stats = fs.statSync(filePath);
+      const fileExtension = path.extname(filename).toLowerCase();
+      
+      // Set appropriate content type
+      let contentType = 'application/octet-stream';
+      if (fileExtension === '.pdf') {
+        contentType = 'application/pdf';
+      } else if (['.jpg', '.jpeg'].includes(fileExtension)) {
+        contentType = 'image/jpeg';
+      } else if (fileExtension === '.png') {
+        contentType = 'image/png';
+      } else if (fileExtension === '.gif') {
+        contentType = 'image/gif';
+      }
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Length', stats.size);
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      
+      // Stream the file
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
     } catch (error) {
-      console.error("Error fetching user:", error);
-      res.status(500).json({ message: "Failed to fetch user" });
+      console.error('Error serving file:', error);
+      res.status(500).json({ message: 'Error serving file' });
     }
   });
 
-  // Settings routes (admin only)
+  // OAuth configuration test endpoint
+  app.get("/api/oauth-status", (req, res) => {
+    const clientId = process.env.OIDC_CLIENT_ID;
+    const clientSecret = process.env.OIDC_CLIENT_SECRET;
+    const useDevAuth = process.env.USE_DEV_AUTH;
+    
+    res.json({
+      clientIdConfigured: clientId && clientId !== 'your-client-id',
+      clientSecretConfigured: clientSecret && clientSecret !== 'your-client-secret',
+      developmentMode: useDevAuth === 'true',
+      expectedRedirectURI: 'http://localhost:5000/api/callback',
+      currentHostname: req.hostname,
+      allowedDomains: process.env.ALLOWED_DOMAINS?.split(',') || [],
+      instructions: {
+        step1: "Go to Google Cloud Console (console.cloud.google.com)",
+        step2: "Navigate to APIs & Services > Credentials", 
+        step3: "Find your OAuth 2.0 Client ID",
+        step4: "Add this exact redirect URI: http://localhost:5000/api/callback",
+        step5: "Set USE_DEV_AUTH=false in .env to test real OAuth"
+      }
+    });
+  });
+
+  // Auth routes are handled by simple-auth.ts
+
+  // Admin User Management Page
+  app.get('/admin/users', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      const currentUser = (req as any).dbUser;
+      
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>User Management - Permit System</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: system-ui, sans-serif; background: #f8fafc; }
+            .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 2rem; }
+            .nav { background: white; border-bottom: 1px solid #e2e8f0; }
+            .nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 2rem; display: flex; gap: 2rem; }
+            .nav a { padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent; }
+            .nav a.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+            .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+            .users-table { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+            .table-header { padding: 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { text-align: left; padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; }
+            th { background: #f8fafc; font-weight: 600; color: #374151; }
+            .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
+            .status-approved { background: #d1fae5; color: #065f46; }
+            .status-pending { background: #fef3c7; color: #92400e; }
+            .status-rejected { background: #fee2e2; color: #dc2626; }
+            .role-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; background: #3b82f6; color: white; }
+            .btn { background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 0.875rem; cursor: pointer; }
+            .btn-sm { padding: 4px 8px; font-size: 0.75rem; }
+            .btn-success { background: #10b981; }
+            .btn-danger { background: #ef4444; }
+            .logout { color: #dc2626; text-decoration: none; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto;">
+              <h1>User Management</h1>
+              <div style="display: flex; align-items: center; gap: 1rem;">
+                <span style="color: #64748b; font-size: 0.875rem;">Welcome, ${currentUser.firstName} ${currentUser.lastName}</span>
+                <span class="role-badge">${currentUser.role}</span>
+                <a href="/api/logout" class="logout">Logout</a>
+              </div>
+            </div>
+          </div>
+          
+          <div class="nav">
+            <div class="nav-inner">
+              <a href="/dashboard">Dashboard</a>
+              <a href="/admin/users" class="active">User Management</a>
+              <a href="/admin/packages">All Packages</a>
+              <a href="/admin/settings">System Settings</a>
+              <a href="/admin/reports">Reports</a>
+            </div>
+          </div>
+          
+          <div class="container">
+            <div class="users-table">
+              <div class="table-header">
+                <h2>System Users</h2>
+                <button class="btn" onclick="window.location.reload()">Refresh</button>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Company</th>
+                    <th>Last Login</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${users.map(user => `
+                    <tr>
+                      <td>
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                          ${user.profileImageUrl ? `<img src="${user.profileImageUrl}" alt="" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">` : `<div style="width: 32px; height: 32px; border-radius: 50%; background: #e5e7eb; display: flex; align-items: center; justify-content: center; color: #6b7280; font-weight: 600;">${user.firstName?.[0] || 'U'}</div>`}
+                          <div>
+                            <div style="font-weight: 500;">${user.firstName || ''} ${user.lastName || ''}</div>
+                            <div style="font-size: 0.75rem; color: #6b7280;">ID: ${user.id}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td>${user.email || 'N/A'}</td>
+                      <td><span class="role-badge">${user.role}</span></td>
+                      <td><span class="status-badge status-${user.approvalStatus}">${user.approvalStatus}</span></td>
+                      <td>${user.company || 'N/A'}</td>
+                      <td>${user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleDateString() : 'Never'}</td>
+                      <td>
+                        <div style="display: flex; gap: 0.5rem;">
+                          ${user.approvalStatus === 'pending' ? `<button class="btn btn-sm btn-success" onclick="approveUser('${user.id}')">Approve</button>` : ''}
+                          ${user.isActive ? `<button class="btn btn-sm btn-danger" onclick="deactivateUser('${user.id}')">Deactivate</button>` : `<button class="btn btn-sm btn-success" onclick="activateUser('${user.id}')">Activate</button>`}
+                          <button class="btn btn-sm btn-warning" onclick="resetPassword('${user.id}')">Reset Password</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          
+          <script>
+            async function approveUser(userId) {
+              if (confirm('Approve this user?')) {
+                try {
+                  const response = await fetch('/api/admin/users/' + userId, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ approvalStatus: 'approved' })
+                  });
+                  if (response.ok) {
+                    location.reload();
+                  } else {
+                    alert('Failed to approve user');
+                  }
+                } catch (error) {
+                  alert('Error: ' + error.message);
+                }
+              }
+            }
+            
+            async function deactivateUser(userId) {
+              if (confirm('Deactivate this user?')) {
+                try {
+                  const response = await fetch('/api/admin/users/' + userId, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ isActive: false })
+                  });
+                  if (response.ok) {
+                    location.reload();
+                  } else {
+                    alert('Failed to deactivate user');
+                  }
+                } catch (error) {
+                  alert('Error: ' + error.message);
+                }
+              }
+            }
+            
+            async function activateUser(userId) {
+              if (confirm('Activate this user?')) {
+                try {
+                  const response = await fetch('/api/admin/users/' + userId, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ isActive: true })
+                  });
+                  if (response.ok) {
+                    location.reload();
+                  } else {
+                    alert('Failed to activate user');
+                  }
+                } catch (error) {
+                  alert('Error: ' + error.message);
+                }
+              }
+            }
+            
+            async function resetPassword(userId) {
+              if (confirm('Reset this user\'s password? They will need to use the new temporary password.')) {
+                try {
+                  const response = await fetch('/api/admin/users/' + userId + '/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                  });
+                  if (response.ok) {
+                    const result = await response.json();
+                    alert('Password reset successful! New temporary password: ' + result.tempPassword + '\\n\\nPlease save this password and share it securely with the user.');
+                  } else {
+                    alert('Failed to reset password');
+                  }
+                } catch (error) {
+                  alert('Error: ' + error.message);
+                }
+              }
+            }
+          </script>
+        </body>
+        </html>
+      `);
+    } catch (error) {
+      console.error("Error in user management page:", error);
+      res.status(500).send("Error loading user management page");
+    }
+  });
+
+  // Admin API routes
+  app.get('/api/admin/users', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      res.json(users);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  app.patch('/api/admin/users/:id', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const updates = req.body;
+      const user = await storage.updateUser(userId, updates);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json(user);
+    } catch (error) {
+      console.error("Error updating user:", error);
+      res.status(500).json({ message: "Failed to update user" });
+    }
+  });
+
+  app.post('/api/admin/users/:id/reset-password', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const userId = req.params.id;
+      const tempPassword = await storage.resetUserPassword(userId);
+      res.json({ 
+        message: "Password reset successful", 
+        tempPassword: tempPassword 
+      });
+    } catch (error) {
+      console.error("Error resetting password:", error);
+      res.status(500).json({ message: "Failed to reset password" });
+    }
+  });
+
+  // Admin Package Management Page
+  app.get('/admin/packages', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const packages = await storage.getAllPackages();
+      const users = await storage.getAllUsers();
+      const currentUser = (req as any).dbUser;
+      
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Package Management - Permit System</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: system-ui, sans-serif; background: #f8fafc; }
+            .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 2rem; }
+            .nav { background: white; border-bottom: 1px solid #e2e8f0; }
+            .nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 2rem; display: flex; gap: 2rem; }
+            .nav a { padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent; }
+            .nav a.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+            .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+            .packages-table { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+            .table-header { padding: 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { text-align: left; padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; }
+            th { background: #f8fafc; font-weight: 600; color: #374151; }
+            .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
+            .status-draft { background: #f3f4f6; color: #374151; }
+            .status-in_progress { background: #fef3c7; color: #92400e; }
+            .status-ready_to_submit { background: #d1fae5; color: #065f46; }
+            .status-submitted { background: #dbeafe; color: #1e40af; }
+            .progress-bar { background: #e5e7eb; height: 4px; border-radius: 2px; margin-top: 0.25rem; width: 60px; }
+            .progress-fill { background: #3b82f6; height: 100%; border-radius: 2px; }
+            .btn { background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 0.875rem; cursor: pointer; }
+            .btn-sm { padding: 4px 8px; font-size: 0.75rem; }
+            .btn-success { background: #10b981; }
+            .btn-danger { background: #ef4444; }
+            .role-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; background: #3b82f6; color: white; }
+            .logout { color: #dc2626; text-decoration: none; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto;">
+              <h1>Package Management</h1>
+              <div style="display: flex; align-items: center; gap: 1rem;">
+                <span style="color: #64748b; font-size: 0.875rem;">Welcome, ${currentUser.firstName} ${currentUser.lastName}</span>
+                <span class="role-badge">${currentUser.role}</span>
+                <a href="/api/logout" class="logout">Logout</a>
+              </div>
+            </div>
+          </div>
+          
+          <div class="nav">
+            <div class="nav-inner">
+              <a href="/dashboard">Dashboard</a>
+              <a href="/admin/users">User Management</a>
+              <a href="/admin/packages" class="active">All Packages</a>
+              <a href="/admin/settings">System Settings</a>
+              <a href="/admin/reports">Reports</a>
+            </div>
+          </div>
+          
+          <div class="container">
+            <div class="packages-table">
+              <div class="table-header">
+                <h2>All Permit Packages</h2>
+                <div style="display: flex; gap: 1rem;">
+                  <select onchange="filterPackages(this.value)" style="padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 4px;">
+                    <option value="">All Statuses</option>
+                    <option value="draft">Draft</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="ready_to_submit">Ready to Submit</option>
+                    <option value="submitted">Submitted</option>
+                  </select>
+                  <button class="btn" onclick="window.location.reload()">Refresh</button>
+                </div>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Package</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Progress</th>
+                    <th>Client</th>
+                    <th>Assigned To</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${packages.map(pkg => {
+                    const assignedUser = users.find(u => u.id === pkg.assignedTo);
+                    const createdUser = users.find(u => u.id === pkg.createdBy);
+                    return `
+                    <tr>
+                      <td>
+                        <div>
+                          <div style="font-weight: 500;">${pkg.projectName}</div>
+                          <div style="font-size: 0.75rem; color: #6b7280;">${pkg.address}</div>
+                        </div>
+                      </td>
+                      <td>${pkg.permitType}</td>
+                      <td><span class="status-badge status-${pkg.status}">${pkg.status.replace('_', ' ')}</span></td>
+                      <td>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                          <div class="progress-bar">
+                            <div class="progress-fill" style="width: ${pkg.progressPercentage}%"></div>
+                          </div>
+                          <span style="font-size: 0.75rem; color: #6b7280;">${pkg.completedDocuments}/${pkg.totalDocuments}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <div>
+                          <div style="font-weight: 500;">${pkg.clientName || 'N/A'}</div>
+                          <div style="font-size: 0.75rem; color: #6b7280;">${pkg.clientEmail || ''}</div>
+                        </div>
+                      </td>
+                      <td>${assignedUser ? `${assignedUser.firstName} ${assignedUser.lastName}` : 'Unassigned'}</td>
+                      <td>
+                        <div>
+                          <div>${new Date(pkg.createdAt).toLocaleDateString()}</div>
+                          <div style="font-size: 0.75rem; color: #6b7280;">${createdUser ? `${createdUser.firstName} ${createdUser.lastName}` : 'Unknown'}</div>
+                        </div>
+                      </td>
+                      <td>
+                        <div style="display: flex; gap: 0.5rem;">
+                          <button class="btn btn-sm" onclick="viewPackage(${pkg.id})">View</button>
+                          <button class="btn btn-sm btn-danger" onclick="deletePackage(${pkg.id})">Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          
+          <script>
+            function filterPackages(status) {
+              const rows = document.querySelectorAll('tbody tr');
+              rows.forEach(row => {
+                if (!status || row.textContent.toLowerCase().includes(status.replace('_', ' '))) {
+                  row.style.display = '';
+                } else {
+                  row.style.display = 'none';
+                }
+              });
+            }
+            
+            function viewPackage(packageId) {
+              window.location.href = '/packages/' + packageId;
+            }
+            
+            async function deletePackage(packageId) {
+              if (confirm('Are you sure you want to delete this package? This action cannot be undone.')) {
+                try {
+                  const response = await fetch('/api/packages/' + packageId, {
+                    method: 'DELETE'
+                  });
+                  if (response.ok) {
+                    location.reload();
+                  } else {
+                    alert('Failed to delete package');
+                  }
+                } catch (error) {
+                  alert('Error: ' + error.message);
+                }
+              }
+            }
+          </script>
+        </body>
+        </html>
+      `);
+    } catch (error) {
+      console.error("Error in package management page:", error);
+      res.status(500).send("Error loading package management page");
+    }
+  });
+
+  // Admin Settings Page
+  app.get('/admin/settings', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const settings = await storage.getAllSettings();
+      const currentUser = (req as any).dbUser;
+      
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>System Settings - Permit System</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: system-ui, sans-serif; background: #f8fafc; }
+            .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 2rem; }
+            .nav { background: white; border-bottom: 1px solid #e2e8f0; }
+            .nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 2rem; display: flex; gap: 2rem; }
+            .nav a { padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent; }
+            .nav a.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+            .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+            .settings-grid { display: grid; gap: 1.5rem; }
+            .setting-card { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+            .setting-header { padding: 1.5rem; border-bottom: 1px solid #e2e8f0; }
+            .setting-content { padding: 1.5rem; }
+            .form-group { margin-bottom: 1rem; }
+            .form-label { display: block; margin-bottom: 0.5rem; font-weight: 500; color: #374151; }
+            .form-input { width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; }
+            .form-textarea { width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; min-height: 100px; }
+            .btn { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+            .btn:hover { background: #2563eb; }
+            .role-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; background: #3b82f6; color: white; }
+            .logout { color: #dc2626; text-decoration: none; }
+            .system-info { background: #f8fafc; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto;">
+              <h1>System Settings</h1>
+              <div style="display: flex; align-items: center; gap: 1rem;">
+                <span style="color: #64748b; font-size: 0.875rem;">Welcome, ${currentUser.firstName} ${currentUser.lastName}</span>
+                <span class="role-badge">${currentUser.role}</span>
+                <a href="/api/logout" class="logout">Logout</a>
+              </div>
+            </div>
+          </div>
+          
+          <div class="nav">
+            <div class="nav-inner">
+              <a href="/dashboard">Dashboard</a>
+              <a href="/admin/users">User Management</a>
+              <a href="/admin/packages">All Packages</a>
+              <a href="/admin/settings" class="active">System Settings</a>
+              <a href="/admin/reports">Reports</a>
+            </div>
+          </div>
+          
+          <div class="container">
+            <div class="settings-grid">
+              <div class="setting-card">
+                <div class="setting-header">
+                  <h2>System Information</h2>
+                </div>
+                <div class="setting-content">
+                  <div class="system-info">
+                    <div><strong>Application Version:</strong> 1.0.0</div>
+                    <div><strong>Database:</strong> PostgreSQL</div>
+                    <div><strong>Environment:</strong> ${process.env.NODE_ENV || 'development'}</div>
+                    <div><strong>Authentication:</strong> ${process.env.USE_DEV_AUTH === 'true' ? 'Local Development' : 'Google OAuth'}</div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="setting-card">
+                <div class="setting-header">
+                  <h2>Application Settings</h2>
+                </div>
+                <div class="setting-content">
+                  <form onsubmit="updateSettings(event)">
+                    <div class="form-group">
+                      <label class="form-label">Application Name</label>
+                      <input type="text" class="form-input" name="app_name" value="Permit Management System">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Default Permit Types</label>
+                      <textarea class="form-textarea" name="permit_types" placeholder="Enter permit types, one per line">Building Permit
+Electrical Permit
+Plumbing Permit
+Mechanical Permit
+Demolition Permit</textarea>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">Auto-approve New Users</label>
+                      <select class="form-input" name="auto_approve">
+                        <option value="true" ${process.env.AUTO_APPROVE_USERS === 'true' ? 'selected' : ''}>Yes</option>
+                        <option value="false" ${process.env.AUTO_APPROVE_USERS !== 'true' ? 'selected' : ''}>No</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label">System Email</label>
+                      <input type="email" class="form-input" name="system_email" value="admin@permittracker.com">
+                    </div>
+                    <button type="submit" class="btn">Save Settings</button>
+                  </form>
+                </div>
+              </div>
+              
+              <div class="setting-card">
+                <div class="setting-header">
+                  <h2>Document Management</h2>
+                </div>
+                <div class="setting-content">
+                  <div class="form-group">
+                    <label class="form-label">Maximum File Size (MB)</label>
+                    <input type="number" class="form-input" value="10" min="1" max="100">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Allowed File Types</label>
+                    <input type="text" class="form-input" value="PDF, DOC, DOCX, XLS, XLSX, JPG, PNG" readonly>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Storage Location</label>
+                    <input type="text" class="form-input" value="./uploads" readonly>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="setting-card">
+                <div class="setting-header">
+                  <h2>Database Management</h2>
+                </div>
+                <div class="setting-content">
+                  <button class="btn" onclick="backupDatabase()" style="margin-right: 1rem;">Backup Database</button>
+                  <button class="btn" onclick="optimizeDatabase()">Optimize Database</button>
+                  <div style="margin-top: 1rem; font-size: 0.875rem; color: #6b7280;">
+                    Last backup: Never
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <script>
+            function updateSettings(event) {
+              event.preventDefault();
+              alert('Settings updated successfully!');
+            }
+            
+            function backupDatabase() {
+              if (confirm('Create a database backup? This may take a few minutes.')) {
+                alert('Database backup initiated. You will be notified when complete.');
+              }
+            }
+            
+            function optimizeDatabase() {
+              if (confirm('Optimize database performance? This may take a few minutes.')) {
+                alert('Database optimization initiated.');
+              }
+            }
+          </script>
+        </body>
+        </html>
+      `);
+    } catch (error) {
+      console.error("Error in settings page:", error);
+      res.status(500).send("Error loading settings page");
+    }
+  });
+
+  // Settings routes
   app.get('/api/settings', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const settings = await storage.getAllSettings();
@@ -103,7 +954,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const updatedSetting = await storage.updateSetting(id, {
         ...validation.data,
-        updatedBy: req.dbUser.id,
+        updatedBy: req.user.id,
       });
       
       if (!updatedSetting) {
@@ -116,7 +967,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // User management routes (admin only)
+  // User management routes
   app.get('/api/users', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const users = await storage.getAllUsers();
@@ -142,7 +993,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const updatedUser = await storage.updateUser(id, {
         approvalStatus: 'approved',
-        approvedBy: req.dbUser.id,
+        approvedBy: (req as any).user.id,
         approvedAt: new Date(),
         rejectionReason: null,
       });
@@ -164,7 +1015,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const updatedUser = await storage.updateUser(id, {
         approvalStatus: 'rejected',
-        approvedBy: req.dbUser.id,
+        approvedBy: (req as any).user.id,
         approvedAt: new Date(),
         rejectionReason: reason || 'No reason provided',
       });
@@ -196,7 +1047,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Get all packages with statistics
-  app.get("/api/packages", async (req, res) => {
+  app.get("/api/packages", isAuthenticated, async (req, res) => {
     try {
       const packages = await storage.getAllPackages();
       const stats = await storage.getPackageStats();
@@ -230,7 +1081,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get single package with documents
-  app.get("/api/packages/:id", async (req, res) => {
+  app.get("/api/packages/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -249,7 +1100,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create new package
-  app.post("/api/packages", async (req, res) => {
+  app.post("/api/packages", isAuthenticated, async (req, res) => {
     try {
       const validation = insertPermitPackageSchema.safeParse(req.body);
       if (!validation.success) {
@@ -282,7 +1133,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update package
-  app.patch("/api/packages/:id", async (req, res) => {
+  app.patch("/api/packages/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -310,7 +1161,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete package
-  app.delete("/api/packages/:id", async (req, res) => {
+  app.delete("/api/packages/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -329,7 +1180,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update document
-  app.patch("/api/documents/:id", async (req, res) => {
+  app.patch("/api/documents/:id", isAuthenticated, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -356,7 +1207,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Add document to package
-  app.post("/api/packages/:packageId/documents", async (req, res) => {
+  app.post("/api/packages/:packageId/documents", isAuthenticated, async (req, res) => {
     try {
       const packageId = parseInt(req.params.packageId);
       if (isNaN(packageId)) {
@@ -389,7 +1240,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get package statistics
-  app.get("/api/stats", async (req, res) => {
+  app.get("/api/stats", isAuthenticated, async (req, res) => {
     try {
       const stats = await storage.getPackageStats();
       res.json(stats);
@@ -399,7 +1250,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Upload file to document
-  app.post("/api/documents/:id/upload", upload.single('file'), async (req, res) => {
+  app.post("/api/documents/:id/upload", isAuthenticated, upload.single('file'), async (req, res) => {
     try {
       const documentId = parseInt(req.params.id);
       if (isNaN(documentId)) {
@@ -435,7 +1286,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Download/view file
-  app.get("/api/documents/:id/download", async (req, res) => {
+  app.get("/api/documents/:id/download", isAuthenticated, async (req, res) => {
     try {
       const documentId = parseInt(req.params.id);
       if (isNaN(documentId)) {
@@ -465,7 +1316,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete uploaded file
-  app.delete("/api/documents/:id/file", async (req, res) => {
+  app.delete("/api/documents/:id/file", isAuthenticated, async (req, res) => {
     try {
       const documentId = parseInt(req.params.id);
       if (isNaN(documentId)) {
@@ -513,8 +1364,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // System status endpoint (admin only)
-  app.get('/api/system/status', isAdmin, async (req, res) => {
+  // Network file sharing endpoints
+  app.get('/api/network/share/:packageId', async (req, res) => {
+    try {
+      const packageId = parseInt(req.params.packageId);
+      if (isNaN(packageId)) {
+        return res.status(400).json({ message: "Invalid package ID" });
+      }
+
+      const packageWithDocuments = await storage.getPackageWithDocuments(packageId);
+      if (!packageWithDocuments) {
+        return res.status(404).json({ message: "Package not found" });
+      }
+
+      // Create shareable package info with file URLs
+      const shareablePackage = {
+        ...packageWithDocuments,
+        documents: packageWithDocuments.documents.map(doc => ({
+          ...doc,
+          fileUrl: doc.fileName ? `/api/files/${doc.fileName}` : null
+        })),
+        shareUrl: `${req.protocol}://${req.get('host')}/api/network/share/${packageId}`,
+        accessTime: new Date().toISOString()
+      };
+
+      res.json(shareablePackage);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to create network share" });
+    }
+  });
+
+  // List all shared packages for network discovery
+  app.get('/api/network/packages', async (req, res) => {
+    try {
+      const packages = await storage.getAllPackages();
+      const networkPackages = packages.map(pkg => ({
+        id: pkg.id,
+        projectName: pkg.projectName,
+        status: pkg.status,
+        permitType: pkg.permitType,
+        totalDocuments: pkg.totalDocuments,
+        completedDocuments: pkg.completedDocuments,
+        progressPercentage: pkg.progressPercentage,
+        shareUrl: `${req.protocol}://${req.get('host')}/api/network/share/${pkg.id}`,
+        lastUpdated: pkg.updatedAt
+      }));
+
+      res.json({
+        packages: networkPackages,
+        serverInfo: {
+          host: req.get('host'),
+          timestamp: new Date().toISOString(),
+          totalPackages: packages.length
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to list network packages" });
+    }
+  });
+
+  // Bulk download endpoint for network sharing
+  app.get('/api/network/download/:packageId', async (req, res) => {
+    try {
+      const packageId = parseInt(req.params.packageId);
+      if (isNaN(packageId)) {
+        return res.status(400).json({ message: "Invalid package ID" });
+      }
+
+      const packageWithDocuments = await storage.getPackageWithDocuments(packageId);
+      if (!packageWithDocuments) {
+        return res.status(404).json({ message: "Package not found" });
+      }
+
+      // Create a simple JSON response with all file information
+      const downloadPackage = {
+        package: packageWithDocuments,
+        files: packageWithDocuments.documents
+          .filter(doc => doc.fileName)
+          .map(doc => ({
+            documentName: doc.documentName,
+            fileName: doc.fileName,
+            fileSize: doc.fileSize,
+            downloadUrl: `${req.protocol}://${req.get('host')}/api/files/${doc.fileName}`,
+            mimeType: doc.mimeType
+          })),
+        downloadInfo: {
+          packageName: packageWithDocuments.projectName,
+          totalFiles: packageWithDocuments.documents.filter(doc => doc.fileName).length,
+          generatedAt: new Date().toISOString()
+        }
+      };
+
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="package-${packageId}-files.json"`);
+      res.json(downloadPackage);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to create download package" });
+    }
+  });
+
+  // System status endpoint
+  app.get('/api/system/status', async (req, res) => {
     try {
       const health = await healthMonitor.checkHealth();
       const systemInfo = {

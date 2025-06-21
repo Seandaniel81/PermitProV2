@@ -28,6 +28,24 @@ if [ -z "$DATABASE_URL" ]; then
     exit 1
 fi
 
+# Get OAuth credentials from user
+echo ""
+echo "🔐 OAuth Configuration Required"
+echo "You need to provide your own Google OAuth credentials:"
+echo "1. Go to https://console.cloud.google.com/"
+echo "2. Create a new project or select existing one"
+echo "3. Enable Google+ API"
+echo "4. Create OAuth 2.0 Client ID credentials"
+echo "5. Add your domain to authorized origins"
+echo ""
+read -p "Enter your Google OAuth Client ID: " OIDC_CLIENT_ID
+read -p "Enter your Google OAuth Client Secret: " OIDC_CLIENT_SECRET
+
+if [ -z "$OIDC_CLIENT_ID" ] || [ -z "$OIDC_CLIENT_SECRET" ]; then
+    echo "❌ OAuth credentials are required"
+    exit 1
+fi
+
 echo "📦 Installing dependencies..."
 bun install
 
@@ -43,10 +61,10 @@ DATABASE_URL=$DATABASE_URL
 # Authentication - OpenID Connect Configuration
 SESSION_SECRET=$SESSION_SECRET
 OIDC_ISSUER_URL=https://accounts.google.com
-OIDC_CLIENT_ID=your-client-id-from-oauth-provider
-OIDC_CLIENT_SECRET=your-client-secret-from-oauth-provider
-ALLOWED_DOMAINS=localhost
-AUTO_APPROVE_USERS=false
+OIDC_CLIENT_ID=$OIDC_CLIENT_ID
+OIDC_CLIENT_SECRET=$OIDC_CLIENT_SECRET
+ALLOWED_DOMAINS=localhost,swonger.tplinkdns.com
+AUTO_APPROVE_USERS=true
 
 # Application Settings
 NODE_ENV=production

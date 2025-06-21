@@ -1,6 +1,7 @@
 
 import { db } from "./db";
 import { permitPackages, packageDocuments, users, settings, DEFAULT_BUILDING_PERMIT_DOCS, DEFAULT_SETTINGS } from "@shared/schema";
+import { hashPassword } from "./local-auth";
 
 export async function seedDatabase() {
   // Check if database already has data
@@ -12,10 +13,12 @@ export async function seedDatabase() {
 
   console.log("Seeding database with sample data...");
 
-  // Create administrator user
+  // Create administrator user with hashed password
+  const adminPasswordHash = await hashPassword("admin123");
   const [adminUser] = await db.insert(users).values({
     id: "admin-1",
-    email: "admin@permittracker.com",
+    email: "admin@system.local",
+    passwordHash: adminPasswordHash,
     firstName: "System",
     lastName: "Administrator",
     role: "admin",
@@ -23,6 +26,8 @@ export async function seedDatabase() {
     approvalStatus: "approved",
     approvedAt: new Date(),
   }).returning();
+
+  console.log("Created admin user: admin@system.local / admin123");
 
   // Create regular user
   const [regularUser] = await db.insert(users).values({

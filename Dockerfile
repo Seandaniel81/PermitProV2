@@ -1,28 +1,50 @@
-FROM node:18-alpine
+# Multi-stage build for production-ready container with Bun
+FROM oven/bun:1 AS builder
 
-# Set working directory
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json bun.lockb bunfig.toml ./
+COPY tsconfig.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN bun install --frozen-lockfile
 
-# Copy application code
+# Copy source code
 COPY . .
 
-# Build the application
-RUN npm run build
+# Build application
+RUN bun run build
 
-# Create uploads and logs directories
-RUN mkdir -p uploads logs backups
+# Production stage
+FROM oven/bun:1-alpine AS production
+
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
+
+# Create app user
+RUN addgroup -g 1001 -S bunuser && adduser -S bunuser -u 1001
+
+WORKDIR /app
+
+# Copy built application from builder stage
+COPY --from=builder --chown=bunuser:bunuser /app/dist ./dist
+COPY --from=builder --chown=bunuser:bunuser /app/node_modules ./node_modules
+COPY --from=builder --chown=bunuser:bunuser /app/package.json ./
+
+# Create necessary directories
+RUN mkdir -p uploads backups logs && chown -R bunuser:bunuser uploads backups logs
+
+# Switch to non-root user
+USER bunuser
 
 # Expose port
-EXPOSE 5000
+EXPOSE 3000
 
-# Set environment
-ENV NODE_ENV=production
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD bun run -e "fetch('http://localhost:3000/health').then(r => process.exit(r.status === 200 ? 0 : 1)).catch(() => process.exit(1))"
 
-# Start the application
-CMD ["npm", "start"]
+# Start application with dumb-init
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["bun", "run", "dist/index.js"]
