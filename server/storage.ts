@@ -338,6 +338,24 @@ export class MemStorage implements IStorage {
   }
 }
 
-import { DatabaseStorage } from "./database-storage";
+import { UnifiedDatabaseStorage } from "./unified-storage";
 
-export const storage = new DatabaseStorage();
+// Dynamically choose storage based on database type
+function createStorage(): IStorage {
+  if (!process.env.DATABASE_URL) {
+    console.warn("No DATABASE_URL found, using in-memory storage");
+    return new MemStorage();
+  }
+  
+  const isPostgreSQL = process.env.DATABASE_URL.startsWith('postgresql://') || process.env.DATABASE_URL.startsWith('postgres://');
+  const isSQLite = process.env.DATABASE_URL.startsWith('file:') || process.env.DATABASE_URL.endsWith('.db');
+  
+  if (isPostgreSQL || isSQLite) {
+    return new UnifiedDatabaseStorage();
+  } else {
+    console.warn("Unknown database type, using in-memory storage");
+    return new MemStorage();
+  }
+}
+
+export const storage = createStorage();

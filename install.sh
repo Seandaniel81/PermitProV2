@@ -115,9 +115,9 @@ if [ "$DEPLOY_TYPE" = "2" ]; then
     fi
     bun run db:push
 else
-    # For SQLite, use the SQLite-specific configuration
+    # For SQLite, use the custom setup script
     echo "Creating SQLite database..."
-    drizzle-kit push --config=drizzle.sqlite.config.ts
+    node setup-sqlite.js
 fi
 
 # Create startup scripts
