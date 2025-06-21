@@ -1,32 +1,24 @@
 # Quick Start Guide - Permit Management System
 
-## Choose Your Deployment Option
+## Bun-Powered Deployment Options
 
-### Option 1: One-Click Server Deployment
-For online access with domain name:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/yourdomain/permit-system/main/scripts/deploy.sh | bash
-```
-
-### Option 2: Private Computer Installation
-For local network use:
+### Option 1: Universal Installation (Recommended)
+Works for both private and server deployments:
 
 ```bash
-# Simple installation (recommended)
 ./install.sh
-
-# Or detailed installation
-./scripts/install-standalone.sh
 ```
 
-### Option 3: Docker Deployment
-```bash
-# Clone repository
-git clone <repository-url>
-cd permit-system
+### Option 2: Advanced Bun Deployment
+Full-featured installation with optimization:
 
-# Basic deployment
+```bash
+./scripts/bun-deploy.sh
+```
+
+### Option 3: Docker with Bun Runtime
+```bash
+# Bun-optimized containers
 docker-compose up -d
 
 # Production with SSL and Redis
