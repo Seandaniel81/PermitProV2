@@ -10,12 +10,12 @@ function generateSecureSecret(): string {
 const configSchema = z.object({
   // Database configuration
   database: z.object({
-    url: z.string().url(),
+    url: z.string().min(1),
     host: z.string().default('localhost'),
     port: z.number().int().min(1).max(65535).default(5432),
-    name: z.string().min(1),
-    user: z.string().min(1),
-    password: z.string().min(1),
+    name: z.string().default(''),
+    user: z.string().default(''),
+    password: z.string().default(''),
     ssl: z.boolean().default(false),
     maxConnections: z.number().int().min(1).default(10),
   }),
