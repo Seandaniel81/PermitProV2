@@ -20,21 +20,26 @@ esac
 
 echo "📋 Detected OS: $OS_TYPE"
 
-# Check if Node.js is installed
-if ! command -v node &> /dev/null; then
-    echo "📦 Installing Node.js..."
-    if [ "$OS_TYPE" = "Linux" ]; then
-        curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-        sudo apt-get install -y nodejs
-    elif [ "$OS_TYPE" = "Mac" ]; then
-        if command -v brew &> /dev/null; then
-            brew install node
-        else
-            echo "❌ Please install Homebrew first: https://brew.sh"
-            exit 1
-        fi
+# Check if Bun is installed
+if ! command -v bun &> /dev/null; then
+    echo "📦 Installing Bun..."
+    curl -fsSL https://bun.sh/install | bash
+    export PATH="$HOME/.bun/bin:$PATH"
+    
+    # Reload shell environment
+    if [ -f "$HOME/.bashrc" ]; then
+        source "$HOME/.bashrc"
+    elif [ -f "$HOME/.zshrc" ]; then
+        source "$HOME/.zshrc"
+    fi
+    
+    if ! command -v bun &> /dev/null; then
+        echo "❌ Bun installation failed. Please install manually from https://bun.sh"
+        exit 1
     fi
 fi
+
+echo "✅ Bun $(bun --version) detected"
 
 # Create application directory
 INSTALL_DIR="$HOME/permit-system"
@@ -49,7 +54,7 @@ echo "⬇️ Downloading application..."
 
 # Install dependencies
 echo "📦 Installing dependencies..."
-npm install --production
+bun install --production
 
 # Choose database option
 echo "🗃️ Database Setup"
@@ -151,10 +156,7 @@ mkdir -p uploads backups
 
 # Build application
 echo "🔨 Building application..."
-npm run build 2>/dev/null || {
-    echo "Building with vite and esbuild..."
-    npx vite build && npx esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist
-}
+bun run build
 
 # Run database setup
 echo "🗃️ Setting up database..."

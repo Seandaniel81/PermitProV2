@@ -8,13 +8,19 @@ set -e
 echo "Permit Management System - Quick Install"
 echo "======================================="
 
-# Check Node.js
-if ! command -v node &> /dev/null; then
-    echo "Error: Node.js not found. Install from https://nodejs.org"
-    exit 1
+# Check Bun
+if ! command -v bun &> /dev/null; then
+    echo "Installing Bun..."
+    curl -fsSL https://bun.sh/install | bash
+    export PATH="$HOME/.bun/bin:$PATH"
+    
+    if ! command -v bun &> /dev/null; then
+        echo "Error: Bun installation failed. Please install manually from https://bun.sh"
+        exit 1
+    fi
 fi
 
-echo "Node.js $(node -v) detected"
+echo "Bun $(bun --version) detected"
 
 # Choose deployment type
 echo ""
@@ -33,12 +39,11 @@ mkdir -p uploads backups dist
 
 # Install dependencies
 echo "Installing dependencies..."
-npm install --silent
+bun install
 
 # Build application
 echo "Building application..."
-npx vite build
-npx esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist
+bun run build
 
 # Create configuration
 echo "Creating configuration..."
@@ -110,14 +115,14 @@ if [ "$DEPLOY_TYPE" = "2" ]; then
     fi
 fi
 
-npx drizzle-kit push
+bun run db:push
 
 # Create startup scripts
 cat > start.sh << 'EOF'
 #!/bin/bash
 echo "Starting Permit Management System..."
 echo "Access at: http://localhost:3000"
-node dist/index.js
+bun run dist/index.js
 EOF
 chmod +x start.sh
 
@@ -125,7 +130,7 @@ cat > start.bat << 'EOF'
 @echo off
 echo Starting Permit Management System...
 echo Access at: http://localhost:3000
-node dist/index.js
+bun run dist/index.js
 pause
 EOF
 
@@ -163,7 +168,7 @@ After=network.target
 Type=simple
 User=$USER
 WorkingDirectory=$(pwd)
-ExecStart=/usr/bin/node dist/index.js
+ExecStart=/home/$USER/.bun/bin/bun run dist/index.js
 Restart=on-failure
 Environment=NODE_ENV=production
 
