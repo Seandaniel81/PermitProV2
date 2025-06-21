@@ -1,6 +1,6 @@
 [install]
 # Automatically install dependencies when running scripts
-auto = "yarn"
+auto = "fallback"
 
 [install.scopes]
 # Trust all scopes for faster installs
