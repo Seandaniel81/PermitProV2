@@ -55,6 +55,7 @@ export async function setupLocalAuth(app: Express) {
     async (email: string, password: string, done) => {
       try {
         const user = await storage.getUserByEmail(email);
+        console.log('Retrieved user:', JSON.stringify(user, null, 2));
         
         if (!user) {
           return done(null, false, { message: 'User not found' });
@@ -69,6 +70,7 @@ export async function setupLocalAuth(app: Express) {
         }
 
         if (!user.passwordHash) {
+          console.log('Password hash missing:', user.passwordHash);
           return done(null, false, { message: 'Account not properly configured' });
         }
 
