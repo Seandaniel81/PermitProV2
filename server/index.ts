@@ -47,8 +47,12 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Seed database with initial data
-  await seedDatabase();
+  // Skip seeding for SQLite - admin user created manually
+  if (!process.env.DATABASE_URL?.includes('file:')) {
+    await seedDatabase();
+  } else {
+    console.log("Using SQLite with manual admin user setup");
+  }
   
   const server = await registerRoutes(app);
 

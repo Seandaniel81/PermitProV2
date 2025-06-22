@@ -1,6 +1,6 @@
 
-import { db } from "./db";
-import { permitPackages, packageDocuments, users, settings, DEFAULT_BUILDING_PERMIT_DOCS, DEFAULT_SETTINGS } from "@shared/schema";
+import { db } from "./sqlite-db";
+import { permitPackages, packageDocuments, users, settings, DEFAULT_BUILDING_PERMIT_DOCS, DEFAULT_SETTINGS } from "../shared/sqlite-schema";
 import { hashPassword } from "./local-auth";
 
 export async function seedDatabase() {
@@ -16,18 +16,18 @@ export async function seedDatabase() {
   // Create administrator user with hashed password
   const adminPasswordHash = await hashPassword("admin123");
   const [adminUser] = await db.insert(users).values({
-    id: "admin-1",
-    email: "admin@system.local",
+    id: "admin",
+    email: "admin@localhost",
     passwordHash: adminPasswordHash,
-    firstName: "System",
-    lastName: "Administrator",
+    firstName: "Admin",
+    lastName: "User",
     role: "admin",
     isActive: true,
     approvalStatus: "approved",
-    approvedAt: new Date(),
+    approvedAt: Math.floor(Date.now() / 1000),
   }).returning();
 
-  console.log("Created admin user: admin@system.local / admin123");
+  console.log("Created admin user: admin@localhost / admin123");
 
   // Create regular user
   const [regularUser] = await db.insert(users).values({
