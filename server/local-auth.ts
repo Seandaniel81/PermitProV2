@@ -4,7 +4,7 @@ import { Strategy as LocalStrategy } from 'passport-local';
 import session from 'express-session';
 import connectPg from 'connect-pg-simple';
 import MemoryStore from 'memorystore';
-import { storage } from './storage';
+import Database from 'better-sqlite3';
 import { config } from './config';
 import type { Express, RequestHandler } from 'express';
 import type { User } from '@shared/schema';
@@ -64,6 +64,45 @@ export async function verifyPassword(password: string, hashedPassword: string): 
   return bcrypt.compare(password, hashedPassword);
 }
 
+// Direct SQLite user lookup for local authentication
+async function getUserByEmailSQLite(email: string): Promise<any | undefined> {
+  if (process.env.FORCE_LOCAL_AUTH === 'true') {
+    const db = new Database('./permit_system.db');
+    try {
+      const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
+      db.close();
+      
+      if (!user) return undefined;
+      
+      // Convert snake_case database fields to camelCase
+      return {
+        id: user.id,
+        email: user.email,
+        passwordHash: user.password_hash,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        profileImageUrl: user.profile_image_url,
+        role: user.role,
+        isActive: Boolean(user.is_active),
+        approvalStatus: user.approval_status,
+        approvedBy: user.approved_by,
+        approvedAt: user.approved_at,
+        rejectionReason: user.rejection_reason,
+        company: user.company,
+        phone: user.phone,
+        lastLoginAt: user.last_login_at,
+        createdAt: user.created_at,
+        updatedAt: user.updated_at
+      };
+    } catch (error) {
+      console.error('SQLite user lookup error:', error);
+      db.close();
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
 export async function setupLocalAuth(app: Express) {
   app.set("trust proxy", 1);
   app.use(getSession());
@@ -78,7 +117,11 @@ export async function setupLocalAuth(app: Express) {
     },
     async (email: string, password: string, done) => {
       try {
-        const user = await storage.getUserByEmail(email);
+        // Use direct SQLite lookup for local auth
+        const user = process.env.FORCE_LOCAL_AUTH === 'true' ? 
+          await getUserByEmailSQLite(email) : 
+          await storage.getUserByEmail(email);
+        
         console.log('Retrieved user:', JSON.stringify(user, null, 2));
         
         if (!user) {
@@ -104,10 +147,16 @@ export async function setupLocalAuth(app: Express) {
           return done(null, false, { message: 'Invalid password' });
         }
 
-        // Update last login time
-        await storage.updateUser(user.id, { 
-          lastLoginAt: new Date() 
-        });
+        // Update last login time - skip for SQLite to avoid storage issues
+        if (process.env.FORCE_LOCAL_AUTH !== 'true') {
+          try {
+            await storage.updateUser(user.id, { 
+              lastLoginAt: new Date() 
+            });
+          } catch (error) {
+            console.warn('Failed to update last login time:', error);
+          }
+        }
 
         return done(null, user);
       } catch (error) {
