@@ -204,6 +204,31 @@ export async function setupLocalAuth(app: Express) {
     }
   });
 
+  // Get current user route
+  app.get('/api/auth/user', isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      if (!user) {
+        return res.status(401).json({ error: 'Not authenticated' });
+      }
+
+      res.json({
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        isActive: user.isActive,
+        approvalStatus: user.approvalStatus,
+        company: user.company,
+        phone: user.phone
+      });
+    } catch (error) {
+      console.error('Get user error:', error);
+      res.status(500).json({ error: 'Failed to get user' });
+    }
+  });
+
   // Change password route
   app.post('/api/change-password', isAuthenticated, async (req, res) => {
     try {
