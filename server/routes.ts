@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import express from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+// Dynamic storage import will be done after environment setup
 // Import authentication - use local auth for development
 import { setupLocalAuth, isAuthenticated, isAdmin } from "./local-auth";
 import { healthMonitor } from "./health-monitor";
@@ -21,6 +21,9 @@ import {
 } from "@shared/schema";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Dynamic import of storage after environment setup
+  const { storage } = await import("./storage");
+  
   // Ensure uploads directory exists
   const uploadsDir = path.join(process.cwd(), "uploads");
   if (!fs.existsSync(uploadsDir)) {

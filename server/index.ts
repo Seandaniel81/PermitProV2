@@ -1,16 +1,17 @@
 import 'dotenv/config';
+
+// Force SQLite database for local development BEFORE importing storage
+if (process.env.FORCE_LOCAL_AUTH === 'true') {
+  process.env.DATABASE_URL = 'file:./permit_system.db';
+  console.log('Forced SQLite database for local development');
+}
+
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { seedDatabase } from "./seed-database";
 import { config } from "./config";
 import { setupAuth } from "./auth";
-
-// Force SQLite database for local development
-if (process.env.FORCE_LOCAL_AUTH === 'true') {
-  process.env.DATABASE_URL = 'file:./permit_system.db';
-  console.log('Forced SQLite database for local development');
-}
 
 const app = express();
 app.use(express.json());
