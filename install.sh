@@ -120,80 +120,231 @@ else
     node setup-sqlite.js
 fi
 
-# Create startup scripts
-cat > start.sh << 'EOF'
-#!/bin/bash
-echo "Starting Permit Management System..."
-echo "Access at: http://localhost:3000"
-bun run dist/index.js
-EOF
-chmod +x start.sh
-
-cat > start.bat << 'EOF'
-@echo off
-echo Starting Permit Management System...
-echo Access at: http://localhost:3000
-bun run dist/index.js
-pause
-EOF
-
-# Server setup
-if [ "$DEPLOY_TYPE" = "2" ]; then
-    echo "Setting up server..."
-    
-    if ! command -v nginx &> /dev/null; then
-        sudo apt install -y nginx
-    fi
-    
-    sudo tee /etc/nginx/sites-available/permit-system > /dev/null << EOF
-server {
-    listen 80;
-    server_name $DOMAIN;
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-EOF
-
-    sudo ln -sf /etc/nginx/sites-available/permit-system /etc/nginx/sites-enabled/
-    sudo rm -f /etc/nginx/sites-enabled/default
-    
-    sudo tee /etc/systemd/system/permit-system.service > /dev/null << EOF
-[Unit]
-Description=Permit Management System
-After=network.target
-
-[Service]
-Type=simple
-User=$USER
-WorkingDirectory=$(pwd)
-ExecStart=/home/$USER/.bun/bin/bun run dist/index.js
-Restart=on-failure
-Environment=NODE_ENV=production
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-    sudo systemctl enable permit-system
-    sudo systemctl start permit-system
-    sudo systemctl reload nginx
-    
-    echo ""
-    echo "Server setup complete!"
-    echo "Access at: http://$DOMAIN"
-    echo "Setup SSL: sudo apt install certbot python3-certbot-nginx && sudo certbot --nginx -d $DOMAIN"
-else
-    echo ""
-    echo "Private installation complete!"
-    echo "Start with: ./start.sh"
-    echo "Access at: http://localhost:3000"
+# Install and configure Apache2
+echo "Installing and configuring Apache2..."
+if ! command -v apache2 &> /dev/null; then
+    echo "Installing Apache2..."
+    sudo apt update && sudo apt install -y apache2
 fi
 
+# Enable necessary Apache modules
+echo "Enabling Apache modules..."
+sudo a2enmod proxy
+sudo a2enmod proxy_http
+sudo a2enmod proxy_balancer
+sudo a2enmod lbmethod_byrequests
+sudo a2enmod rewrite
+sudo a2enmod ssl
+sudo a2enmod headers
+
+# Configure Apache virtual host based on deployment type
+if [ "$DEPLOY_TYPE" = "2" ]; then
+    # Production Apache virtual host
+    echo "Creating production Apache virtual host..."
+    sudo tee /etc/apache2/sites-available/permit-system.conf > /dev/null << 'APACHE_EOF'
+<VirtualHost *:80>
+    ServerName localhost
+    DocumentRoot /var/www/html
+    
+    # Proxy all requests to Node.js application
+    ProxyPreserveHost On
+    ProxyPass /api/ http://localhost:3001/api/
+    ProxyPassReverse /api/ http://localhost:3001/api/
+    ProxyPass / http://localhost:3001/
+    ProxyPassReverse / http://localhost:3001/
+    
+    # Enable compression
+    <Location />
+        SetOutputFilter DEFLATE
+        SetEnvIfNoCase Request_URI \\.(?:gif|jpe?g|png)$ no-gzip dont-vary
+        SetEnvIfNoCase Request_URI \\.(?:exe|t?gz|zip|bz2|sit|rar)$ no-gzip dont-vary
+    </Location>
+    
+    # Security headers
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-Frame-Options DENY
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    
+    # Logs
+    ErrorLog ${APACHE_LOG_DIR}/permit-system-error.log
+    CustomLog ${APACHE_LOG_DIR}/permit-system-access.log combined
+</VirtualHost>
+
+# SSL Virtual Host (if SSL certificate is available)
+<IfModule mod_ssl.c>
+    <VirtualHost *:443>
+        ServerName localhost
+        DocumentRoot /var/www/html
+        
+        SSLEngine on
+        # SSLCertificateFile /path/to/certificate.crt
+        # SSLCertificateKeyFile /path/to/private.key
+        
+        # Proxy all requests to Node.js application
+        ProxyPreserveHost On
+        ProxyPass /api/ http://localhost:3001/api/
+        ProxyPassReverse /api/ http://localhost:3001/api/
+        ProxyPass / http://localhost:3001/
+        ProxyPassReverse / http://localhost:3001/
+        
+        # Security headers
+        Header always set X-Content-Type-Options nosniff
+        Header always set X-Frame-Options DENY
+        Header always set X-XSS-Protection "1; mode=block"
+        Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        
+        # Logs
+        ErrorLog ${APACHE_LOG_DIR}/permit-system-ssl-error.log
+        CustomLog ${APACHE_LOG_DIR}/permit-system-ssl-access.log combined
+    </VirtualHost>
+</IfModule>
+APACHE_EOF
+
+    # Enable the production site
+    sudo a2ensite permit-system.conf
+    
+else
+    # Development Apache virtual host
+    echo "Creating development Apache virtual host..."
+    sudo tee /etc/apache2/sites-available/permit-system-dev.conf > /dev/null << 'APACHE_EOF'
+<VirtualHost *:80>
+    ServerName localhost
+    ServerAlias 127.0.0.1
+    DocumentRoot /var/www/html
+    
+    # Proxy all requests to Node.js development server
+    ProxyPreserveHost On
+    ProxyPass /api/ http://localhost:5000/api/
+    ProxyPassReverse /api/ http://localhost:5000/api/
+    ProxyPass / http://localhost:5000/
+    ProxyPassReverse / http://localhost:5000/
+    
+    # Enable hot reload for development (WebSocket support)
+    RewriteEngine On
+    RewriteCond %{HTTP:Upgrade} websocket [NC]
+    RewriteCond %{HTTP:Connection} upgrade [NC]
+    RewriteRule ^/?(.*) "ws://localhost:5000/$1" [P,L]
+    
+    # Development headers
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-Frame-Options SAMEORIGIN
+    Header always set X-XSS-Protection "1; mode=block"
+    
+    # Logs
+    ErrorLog ${APACHE_LOG_DIR}/permit-system-dev-error.log
+    CustomLog ${APACHE_LOG_DIR}/permit-system-dev-access.log combined
+</VirtualHost>
+APACHE_EOF
+
+    # Enable the development site
+    sudo a2ensite permit-system-dev.conf
+fi
+
+# Disable default Apache site
+sudo a2dissite 000-default.conf 2>/dev/null || true
+
+# Test Apache configuration
+echo "Testing Apache configuration..."
+sudo apache2ctl configtest
+
+# Restart Apache
+echo "Restarting Apache..."
+sudo systemctl restart apache2
+sudo systemctl enable apache2
+
+echo "Apache2 configured successfully!"
+if [ "$DEPLOY_TYPE" = "2" ]; then
+    echo "Production site available at: http://localhost"
+    echo "SSL site will be available at: https://localhost (after SSL certificate setup)"
+else
+    echo "Development site available at: http://localhost"
+fi
+
+# Create startup scripts
+cat > start-dev.sh << 'EOF'
+#!/bin/bash
+echo "Starting Permit Management System (Development)"
+echo "=============================================="
+echo "Development server with hot reload"
+echo "Access via Apache at: http://localhost"
+echo "Direct access at: http://localhost:5000"
+npm run dev
+EOF
+chmod +x start-dev.sh
+
+# Update existing production startup script
+cat > start-prod.sh << 'EOF'
+#!/bin/bash
+echo "Starting Permit Management System (Production)"
+echo "============================================="
+
+# Set production environment
+export NODE_ENV=production
+export PORT=3001
+
+# Load production environment if it exists
+if [ -f ".env.production" ]; then
+    set -a
+    source .env.production
+    set +a
+fi
+
+# Create required directories
+mkdir -p uploads backups logs
+
+# Build if necessary
+if [ ! -f "dist/index.js" ]; then
+    echo "Building application..."
+    npm run build
+fi
+
+echo "Starting production server on port $PORT..."
+echo "Access via Apache at: http://localhost"
+echo "Direct access at: http://localhost:$PORT"
+node dist/index.js
+EOF
+chmod +x start-prod.sh
+
+echo ""
+echo "=========================================="
+echo "PERMIT MANAGEMENT SYSTEM SETUP COMPLETE!"
+echo "=========================================="
+echo ""
+echo "Apache2 has been configured and is running"
+echo ""
+if [ "$DEPLOY_TYPE" = "2" ]; then
+    echo "PRODUCTION DEPLOYMENT:"
+    echo "• Apache virtual host: permit-system.conf"
+    echo "• Main access: http://localhost (via Apache)"
+    echo "• Direct access: http://localhost:3001"
+    echo "• Database: PostgreSQL"
+    echo "• Start server: ./start-prod.sh"
+    echo "• SSL ready (configure certificates in Apache)"
+    echo ""
+    echo "To setup SSL certificate:"
+    echo "sudo apt install certbot python3-certbot-apache"
+    echo "sudo certbot --apache"
+else
+    echo "DEVELOPMENT/PRIVATE DEPLOYMENT:"
+    echo "• Apache virtual host: permit-system-dev.conf"
+    echo "• Main access: http://localhost (via Apache)"
+    echo "• Direct access: http://localhost:5000"
+    echo "• Database: SQLite (permit_system.db)"
+    echo "• Start development: ./start-dev.sh"
+    echo "• Start production: ./start-prod.sh"
+fi
+echo ""
+echo "Default admin login: admin@localhost / admin123"
+echo ""
+echo "Available startup scripts:"
+echo "• ./start-dev.sh  - Development mode with hot reload"
+echo "• ./start-prod.sh - Production mode"
+echo ""
+echo "Apache management:"
+echo "• Status: sudo systemctl status apache2"
+echo "• Restart: sudo systemctl restart apache2"
+echo "• Logs: sudo tail -f /var/log/apache2/permit-system*-error.log"
 echo ""
 echo "Installation finished!"
 echo "Configuration: .env"

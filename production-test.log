@@ -1,0 +1,30 @@
+/home/runner/workspace/node_modules/pg-pool/index.js:45
+    Error.captureStackTrace(err)
+          ^
+
+error: database "permit_system.db" does not exist
+    at /home/runner/workspace/node_modules/pg-pool/index.js:45:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async file:///home/runner/workspace/node_modules/drizzle-orm/node-postgres/session.js:83:22
+    at async seedDatabase (file:///home/runner/workspace/dist/index.js:3193:25)
+    at async file:///home/runner/workspace/dist/index.js:3329:3 {
+  length: 63,
+  severity: 'ERROR',
+  code: 'XX000',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: undefined,
+  line: undefined,
+  routine: undefined
+}
+
+Node.js v20.18.1
