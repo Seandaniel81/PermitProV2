@@ -343,6 +343,8 @@ import { SimpleSQLiteStorage } from "./simple-sqlite-storage";
 
 // Dynamically choose storage based on database type
 function createStorage(): IStorage {
+  console.log('Storage initialization - DATABASE_URL:', process.env.DATABASE_URL);
+  
   if (!process.env.DATABASE_URL) {
     console.warn("No DATABASE_URL found, using in-memory storage");
     return new MemStorage();
@@ -351,9 +353,13 @@ function createStorage(): IStorage {
   const isPostgreSQL = process.env.DATABASE_URL.startsWith('postgresql://') || process.env.DATABASE_URL.startsWith('postgres://');
   const isSQLite = process.env.DATABASE_URL.startsWith('file:') || process.env.DATABASE_URL.endsWith('.db');
   
+  console.log('Storage checks - isPostgreSQL:', isPostgreSQL, 'isSQLite:', isSQLite);
+  
   if (isPostgreSQL) {
+    console.log('Using DatabaseStorage for PostgreSQL');
     return new DatabaseStorage();
   } else if (isSQLite) {
+    console.log('Using SimpleSQLiteStorage for SQLite');
     return new SimpleSQLiteStorage();
   } else {
     console.warn("Unknown database type, using in-memory storage");
