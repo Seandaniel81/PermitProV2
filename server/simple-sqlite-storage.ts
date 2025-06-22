@@ -18,28 +18,7 @@ export class SimpleSQLiteStorage implements IStorage {
 
   async getUserByEmail(email: string): Promise<any | undefined> {
     const [user] = await db.select().from(users).where(eq(users.email, email));
-    if (!user) return undefined;
-    
-    // Map snake_case database fields to camelCase
-    return {
-      id: user.id,
-      email: user.email,
-      passwordHash: user.passwordHash,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      profileImageUrl: user.profileImageUrl,
-      role: user.role,
-      isActive: user.isActive,
-      approvalStatus: user.approvalStatus,
-      approvedBy: user.approvedBy,
-      approvedAt: user.approvedAt,
-      rejectionReason: user.rejectionReason,
-      company: user.company,
-      phone: user.phone,
-      lastLoginAt: user.lastLoginAt,
-      createdAt: user.createdAt,
-      updatedAt: user.updatedAt
-    };
+    return user || undefined;
   }
 
   async upsertUser(userData: any): Promise<any> {
