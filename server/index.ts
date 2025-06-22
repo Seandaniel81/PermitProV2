@@ -6,6 +6,12 @@ import { seedDatabase } from "./seed-database";
 import { config } from "./config";
 import { setupAuth } from "./auth";
 
+// Force SQLite database for local development
+if (process.env.FORCE_LOCAL_AUTH === 'true') {
+  process.env.DATABASE_URL = 'file:./permit_system.db';
+  console.log('Forced SQLite database for local development');
+}
+
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));

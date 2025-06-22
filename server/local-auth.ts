@@ -3,6 +3,7 @@ import passport from 'passport';
 import { Strategy as LocalStrategy } from 'passport-local';
 import session from 'express-session';
 import connectPg from 'connect-pg-simple';
+import MemoryStore from 'memorystore';
 import { storage } from './storage';
 import { config } from './config';
 import type { Express, RequestHandler } from 'express';
@@ -10,6 +11,29 @@ import type { User } from '@shared/schema';
 
 export function getSession() {
   const sessionTtl = config.security.sessionMaxAge;
+  
+  // Use memory store for SQLite/local development
+  if (process.env.FORCE_LOCAL_AUTH === 'true' || process.env.DATABASE_URL?.includes('file:')) {
+    const SessionStore = MemoryStore(session);
+    const sessionStore = new SessionStore({
+      checkPeriod: 86400000, // prune expired entries every 24h
+    });
+    
+    return session({
+      secret: config.security.sessionSecret,
+      store: sessionStore,
+      resave: false,
+      saveUninitialized: false,
+      cookie: {
+        httpOnly: true,
+        secure: false,
+        maxAge: sessionTtl,
+        sameSite: 'lax',
+      },
+    });
+  }
+  
+  // Use PostgreSQL store for production
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
     conString: process.env.DATABASE_URL,
@@ -24,7 +48,7 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: false, // Allow cookies over HTTP for development
+      secure: false,
       maxAge: sessionTtl,
       sameSite: 'lax',
     },
