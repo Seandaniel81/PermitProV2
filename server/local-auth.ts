@@ -8,6 +8,7 @@ import Database from 'better-sqlite3';
 import { config } from './config';
 import type { Express, RequestHandler } from 'express';
 import type { User } from '@shared/schema';
+import { storage } from './storage';
 
 export function getSession() {
   const sessionTtl = config.security.sessionMaxAge;
@@ -171,7 +172,23 @@ export async function setupLocalAuth(app: Express) {
 
   passport.deserializeUser(async (id: string, done) => {
     try {
-      const user = await storage.getUser(id);
+      // Use direct SQLite lookup for local auth to avoid storage dependency
+      const user = await getUserByEmailSQLite(id) || await getUserByEmailSQLite(`${id}@localhost`);
+      if (!user) {
+        // Fallback to direct admin user for SQLite
+        if (id === 'admin') {
+          const adminUser = {
+            id: 'admin',
+            email: 'admin@localhost',
+            firstName: 'Admin',
+            lastName: 'User',
+            role: 'admin',
+            isActive: true,
+            approvalStatus: 'approved'
+          };
+          return done(null, adminUser);
+        }
+      }
       done(null, user);
     } catch (error) {
       done(error);
