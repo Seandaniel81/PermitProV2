@@ -1,9 +1,9 @@
 import 'dotenv/config';
 
 // Force SQLite database for local development BEFORE importing ANY modules
-if (process.env.FORCE_LOCAL_AUTH === 'true') {
+if (process.env.FORCE_LOCAL_AUTH === 'true' || process.env.NODE_ENV === 'production') {
   process.env.DATABASE_URL = 'file:./permit_system.db';
-  console.log('Forced SQLite database for local development');
+  console.log('Forced SQLite database for local/production deployment');
   // Clear any existing PostgreSQL connection strings
   delete process.env.PGDATABASE;
   delete process.env.PGUSER;

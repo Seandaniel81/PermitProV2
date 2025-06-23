@@ -1,56 +1,91 @@
 #!/bin/bash
 
-# Production startup script for Permit Management System
-echo "Starting Permit Management System (Production Mode)"
-echo "=================================================="
+# Production startup script for Permit Management System with SQLite
+
+set -e
+
+echo "Starting Permit Management System in production mode with SQLite..."
+
+# Ensure SQLite database exists
+if [ ! -f "permit_system.db" ]; then
+    echo "Creating SQLite database..."
+    
+    # Create database setup script
+    cat > create-production-db.js << 'EOF'
+const Database = require('better-sqlite3');
+const bcrypt = require('bcrypt');
+
+async function setup() {
+    const db = new Database('./permit_system.db');
+    
+    // Create users table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            first_name TEXT,
+            last_name TEXT,
+            profile_image_url TEXT,
+            role TEXT DEFAULT 'user',
+            is_active INTEGER DEFAULT 1,
+            approval_status TEXT DEFAULT 'approved',
+            approved_by TEXT,
+            approved_at INTEGER,
+            rejection_reason TEXT,
+            company TEXT,
+            phone TEXT,
+            last_login_at INTEGER,
+            created_at INTEGER DEFAULT (unixepoch()),
+            updated_at INTEGER DEFAULT (unixepoch())
+        );
+    `);
+    
+    // Create sessions table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS sessions (
+            sid TEXT PRIMARY KEY,
+            sess TEXT NOT NULL,
+            expire INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS IDX_session_expire ON sessions(expire);
+    `);
+    
+    // Create admin user
+    const hashedPassword = await bcrypt.hash('admin123', 10);
+    const now = Math.floor(Date.now() / 1000);
+    
+    db.prepare(`
+        INSERT OR REPLACE INTO users (
+            id, email, password_hash, first_name, last_name, 
+            role, is_active, approval_status, approved_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run('admin', 'admin@localhost', hashedPassword, 'Admin', 'User', 'admin', 1, 'approved', now, now, now);
+    
+    console.log('Production database setup completed');
+    db.close();
+}
+
+setup().catch(console.error);
+EOF
+
+    node create-production-db.js
+    rm create-production-db.js
+fi
 
 # Set production environment variables
 export NODE_ENV=production
+export DATABASE_URL=file:./permit_system.db
+export FORCE_LOCAL_AUTH=true
+export SESSION_SECRET=a4f7c8e2b9d1e6f3a8c5b2e9f1d4a7c0b6e8f2a5c9d1e7f4a8b2e5c9f1d6a3c8
 export PORT=3001
 
-# Create production environment file if it doesn't exist
-if [ ! -f ".env.production" ]; then
-    echo "Creating production environment configuration..."
-    cat > .env.production << EOF
-NODE_ENV=production
-PORT=3001
-DATABASE_URL=file:./permit_system.db
-SESSION_SECRET=$(openssl rand -base64 32 2>/dev/null || echo "prod-secret-$(date +%s)")
-USE_AUTH0=false
-USE_DEV_AUTH=true
-FORCE_LOCAL_AUTH=true
-AUTO_APPROVE_USERS=true
-MAX_FILE_SIZE=10485760
-ALLOWED_FILE_TYPES=pdf,doc,docx,xls,xlsx,jpg,png
-UPLOAD_PATH=./uploads
-BACKUP_PATH=./backups
-EOF
-fi
+# Clear any PostgreSQL environment variables
+unset PGDATABASE PGUSER PGPASSWORD PGHOST PGPORT
 
-# Load production environment
-set -a
-source .env.production
-set +a
-
-# Create required directories
-mkdir -p uploads backups logs
-
-# Setup database if it doesn't exist
-if [ ! -f "permit_system.db" ]; then
-    echo "Setting up SQLite database..."
-    node setup-sqlite.js
-fi
-
-# Build application if needed
-if [ ! -f "dist/index.js" ]; then
-    echo "Building application..."
-    npm run build
-fi
-
-echo "Starting production server on port $PORT..."
-echo "Access via Apache at: http://localhost"
-echo "Direct access at: http://localhost:$PORT"
-echo "Press Ctrl+C to stop"
+echo "Environment configured for SQLite production"
+echo "Admin credentials: admin@localhost / admin123"
+echo "Starting server on port 3001..."
 
 # Start the production server
 node dist/index.js
