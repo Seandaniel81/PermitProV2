@@ -154,31 +154,57 @@ chmod 755 uploads
 npm run dev
 ```
 
-## Apache2 Configuration (Optional)
+## Apache2 Web Server Configuration
 
-### Enable Modules
-```bash
-sudo a2enmod proxy proxy_http ssl rewrite
-```
+The permit management system is designed to run with Apache2 as the web server, which proxies requests to the Node.js backend.
 
-### Create Virtual Host
+### Install and Configure Apache2
 ```bash
+# Install Apache2
+sudo apt update
+sudo apt install apache2
+
+# Enable required modules
+sudo a2enmod proxy proxy_http ssl rewrite headers
+
+# Create virtual host configuration
 sudo tee /etc/apache2/sites-available/permit-system.conf << 'EOF'
 <VirtualHost *:80>
     ServerName localhost
     DocumentRoot /var/www/html
 
+    # Proxy all requests to Node.js application
     ProxyPreserveHost On
     ProxyPass / http://localhost:5000/
     ProxyPassReverse / http://localhost:5000/
 
+    # Enable logging
     ErrorLog ${APACHE_LOG_DIR}/permit_error.log
     CustomLog ${APACHE_LOG_DIR}/permit_access.log combined
+
+    # Security headers
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-Frame-Options DENY
+    Header always set X-XSS-Protection "1; mode=block"
 </VirtualHost>
 EOF
 
-sudo a2ensite permit-system
+# Enable the site and disable default
+sudo a2ensite permit-system.conf
+sudo a2dissite 000-default.conf
+
+# Test and reload Apache
+sudo apache2ctl configtest
 sudo systemctl reload apache2
+```
+
+### Start Both Services
+```bash
+# Start Node.js application
+npm run dev
+
+# Apache automatically starts with system
+# Access via: http://localhost/api/login
 ```
 
 ## Testing the Installation
@@ -203,10 +229,10 @@ curl -X POST http://localhost:5000/api/auth/login \
 
 ### 3. Access Dashboard
 ```bash
-# Open in browser
-firefox http://localhost:5000/api/login
+# Open in browser (via Apache)
+firefox http://localhost/api/login
 # OR
-chromium http://localhost:5000/api/login
+chromium http://localhost/api/login
 ```
 
 ## Default Credentials
