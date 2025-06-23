@@ -341,8 +341,14 @@ export class MemStorage implements IStorage {
 import { DatabaseStorage } from "./database-storage";
 import { SimpleSQLiteStorage } from "./simple-sqlite-storage";
 
-// Dynamically choose storage based on database type
+// Dynamically choose storage based on configuration - FIXED VERSION
 function createStorage(): IStorage {
+  // Check for forced local auth FIRST before any database operations
+  if (process.env.FORCE_LOCAL_AUTH === 'true') {
+    console.log('FORCE_LOCAL_AUTH detected - using SimpleSQLiteStorage');
+    return new SimpleSQLiteStorage();
+  }
+  
   console.log('Storage initialization - DATABASE_URL:', process.env.DATABASE_URL);
   
   if (!process.env.DATABASE_URL) {
