@@ -13,7 +13,7 @@ import {
   UpdateSetting,
   PACKAGE_STATUSES,
   DEFAULT_BUILDING_PERMIT_DOCS
-} from "@shared/schema";
+} from "../shared/sqlite-schema";
 
 export interface IStorage {
   // User methods
