@@ -172,8 +172,10 @@ export async function setupLocalAuth(app: Express) {
 
   passport.deserializeUser(async (id: string, done) => {
     try {
-      // Use direct SQLite lookup for local auth to avoid storage dependency
-      const user = await getUserByEmailSQLite(id) || await getUserByEmailSQLite(`${id}@localhost`);
+      // Look up user by ID from SQLite database
+      const { storage } = await import("./storage");
+      const user = await storage.getUser(id);
+      
       if (!user) {
         // Fallback to direct admin user for SQLite
         if (id === 'admin') {
