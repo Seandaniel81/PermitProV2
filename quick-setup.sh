@@ -34,85 +34,9 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
-# Create SQLite database and admin user
-cat > temp-db-setup.js << 'EOF'
-const Database = require('better-sqlite3');
-const bcrypt = require('bcrypt');
-
-async function setup() {
-    console.log('Creating SQLite database...');
-    const db = new Database('./permit_system.db');
-    
-    // Create users table
-    db.exec(`
-        CREATE TABLE IF NOT EXISTS users (
-            id TEXT PRIMARY KEY,
-            email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
-            first_name TEXT,
-            last_name TEXT,
-            profile_image_url TEXT,
-            role TEXT DEFAULT 'user',
-            is_active INTEGER DEFAULT 1,
-            approval_status TEXT DEFAULT 'approved',
-            approved_by TEXT,
-            approved_at INTEGER,
-            rejection_reason TEXT,
-            company TEXT,
-            phone TEXT,
-            last_login_at INTEGER,
-            created_at INTEGER DEFAULT (unixepoch()),
-            updated_at INTEGER DEFAULT (unixepoch())
-        );
-    `);
-    
-    // Create sessions table for authentication
-    db.exec(`
-        CREATE TABLE IF NOT EXISTS sessions (
-            sid TEXT PRIMARY KEY,
-            sess TEXT NOT NULL,
-            expire INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS IDX_session_expire ON sessions(expire);
-    `);
-    
-    // Create admin user
-    const hashedPassword = await bcrypt.hash('admin123', 10);
-    const now = Math.floor(Date.now() / 1000);
-    
-    const insertUser = db.prepare(`
-        INSERT OR REPLACE INTO users (
-            id, email, password_hash, first_name, last_name, 
-            role, is_active, approval_status, approved_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    
-    insertUser.run(
-        'admin',
-        'admin@localhost', 
-        hashedPassword,
-        'Admin',
-        'User',
-        'admin',
-        1,
-        'approved',
-        now,
-        now,
-        now
-    );
-    
-    console.log('Database setup completed');
-    console.log('Admin user: admin@localhost / admin123');
-    
-    db.close();
-}
-
-setup().catch(console.error);
-EOF
-
-# Run database setup
-node temp-db-setup.js
-rm temp-db-setup.js
+# Run database setup using the standalone script
+echo "Setting up database with admin user..."
+node setup-database-standalone.js
 
 # Configure Apache2
 echo "Configuring Apache2..."
