@@ -500,9 +500,21 @@ export async function setupLocalAuth(app: Express) {
   });
 }
 
-export const isAuthenticated: RequestHandler = (req, res, next) => {
+export const isAuthenticated: RequestHandler = async (req, res, next) => {
   if (req.isAuthenticated() && req.user) {
-    return next();
+    try {
+      // Load full user data from database and attach to request
+      const { storage } = await import("./storage");
+      const userId = (req.user as any).id;
+      const dbUser = await storage.getUser(userId);
+      
+      if (dbUser) {
+        (req as any).dbUser = dbUser;
+        return next();
+      }
+    } catch (error) {
+      console.error('Error loading user data:', error);
+    }
   }
   res.status(401).json({ message: "Unauthorized" });
 };
