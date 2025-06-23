@@ -1,18 +1,8 @@
-import { Pool } from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import * as schema from "@shared/schema";
+import Database from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import * as schema from '../shared/sqlite-schema';
 
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
-}
+const dbPath = './permit_system.db';
 
-export const pool = new Pool({ 
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' && !process.env.DATABASE_URL.includes('localhost') 
-    ? { rejectUnauthorized: false } 
-    : false
-});
-
-export const db = drizzle(pool, { schema });
+export const sqlite = new Database(dbPath);
+export const db = drizzle(sqlite, { schema });

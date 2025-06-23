@@ -63,45 +63,41 @@ async function fixDatabase() {
         );
     `);
 
-    // Create permit_packages table
+    // Create permit_packages table to match SQLite schema
     db.exec(`
         CREATE TABLE permit_packages (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            description TEXT,
+            project_name TEXT NOT NULL,
+            permit_type TEXT NOT NULL,
             status TEXT DEFAULT 'draft',
-            applicant_name TEXT,
-            applicant_email TEXT,
-            applicant_phone TEXT,
-            property_address TEXT,
-            permit_type TEXT,
-            estimated_value REAL,
-            submission_date INTEGER,
-            approval_date INTEGER,
+            address TEXT NOT NULL,
+            client_name TEXT,
+            client_email TEXT,
+            client_phone TEXT,
+            description TEXT,
             notes TEXT,
+            assigned_to TEXT,
             created_by TEXT,
+            submitted_at INTEGER,
             created_at INTEGER DEFAULT (unixepoch()),
             updated_at INTEGER DEFAULT (unixepoch()),
-            FOREIGN KEY (created_by) REFERENCES users(id)
+            FOREIGN KEY (created_by) REFERENCES users(id),
+            FOREIGN KEY (assigned_to) REFERENCES users(id)
         );
     `);
 
-    // Create package_documents table
+    // Create package_documents table to match SQLite schema
     db.exec(`
         CREATE TABLE package_documents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             package_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            description TEXT,
-            file_path TEXT,
-            file_name TEXT,
-            file_size INTEGER,
-            mime_type TEXT,
-            document_type TEXT,
-            is_required INTEGER DEFAULT 0,
-            status TEXT DEFAULT 'pending',
+            document_name TEXT NOT NULL,
+            filename TEXT,
+            original_name TEXT,
+            is_required INTEGER DEFAULT 1,
+            is_completed INTEGER DEFAULT 0,
             uploaded_by TEXT,
-            uploaded_at INTEGER DEFAULT (unixepoch()),
+            uploaded_at INTEGER,
             created_at INTEGER DEFAULT (unixepoch()),
             updated_at INTEGER DEFAULT (unixepoch()),
             FOREIGN KEY (package_id) REFERENCES permit_packages(id) ON DELETE CASCADE,
@@ -158,49 +154,48 @@ async function fixDatabase() {
     insertSetting.run('require_approval', 'false', 'permits', 'Whether new permits require admin approval');
     insertSetting.run('max_file_size', '10', 'uploads', 'Maximum file size in MB for document uploads');
     
-    // Insert sample permit packages
+    // Insert sample permit packages with correct schema
     const insertPackage = db.prepare(`
         INSERT INTO permit_packages (
-            title, description, status, applicant_name, applicant_email, 
-            property_address, permit_type, estimated_value, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            project_name, permit_type, status, address, client_name, 
+            client_email, description, created_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
     
     insertPackage.run(
         'Residential Addition',
-        'Adding a second story to existing home',
+        'Building Permit',
         'draft',
+        '123 Main Street, Anytown, USA',
         'John Smith',
         'john.smith@email.com',
-        '123 Main Street, Anytown, USA',
-        'Building',
-        75000,
+        'Adding a second story to existing home',
         'admin'
     );
     
     insertPackage.run(
         'Commercial Renovation',
-        'Office space renovation and modernization',
-        'in-progress',
+        'Commercial Permit',
+        'in_progress',
+        '456 Business Ave, Commerce City, USA',
         'ABC Corporation',
         'permits@abccorp.com',
-        '456 Business Ave, Commerce City, USA',
-        'Commercial',
-        150000,
+        'Office space renovation and modernization',
         'admin'
     );
     
-    // Insert sample documents
+    // Insert sample documents with correct schema
     const insertDocument = db.prepare(`
         INSERT INTO package_documents (
-            package_id, title, description, document_type, 
-            is_required, status, uploaded_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            package_id, document_name, is_required, is_completed, uploaded_by
+        ) VALUES (?, ?, ?, ?, ?)
     `);
     
-    insertDocument.run(1, 'Site Plan', 'Architectural site plan showing property boundaries', 'plan', 1, 'pending', 'admin');
-    insertDocument.run(1, 'Building Plans', 'Detailed construction drawings', 'plan', 1, 'pending', 'admin');
-    insertDocument.run(2, 'Fire Safety Plan', 'Commercial fire safety and evacuation plan', 'safety', 1, 'approved', 'admin');
+    insertDocument.run(1, 'Site Plan', 1, 0, 'admin');
+    insertDocument.run(1, 'Building Plans', 1, 0, 'admin');
+    insertDocument.run(1, 'Structural Calculations', 1, 0, 'admin');
+    insertDocument.run(2, 'Fire Safety Plan', 1, 1, 'admin');
+    insertDocument.run(2, 'Zoning Compliance', 1, 0, 'admin');
     
     console.log('Sample data inserted successfully');
     
