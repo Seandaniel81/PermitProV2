@@ -178,6 +178,123 @@ export async function setupLocalAuth(app: Express) {
     }
   });
 
+  // Login page route
+  app.get('/api/login', (req, res) => {
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Login - Permit Management System</title>
+        <style>
+          body { 
+            font-family: system-ui, sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh; 
+            margin: 0; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+          }
+          .container { 
+            background: white; 
+            border-radius: 8px; 
+            padding: 2rem; 
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); 
+            width: 100%; 
+            max-width: 400px; 
+          }
+          h1 { margin-top: 0; color: #333; text-align: center; }
+          .form-group { margin-bottom: 1rem; }
+          label { display: block; margin-bottom: 0.5rem; font-weight: 500; color: #555; }
+          input { 
+            width: 100%; 
+            padding: 0.75rem; 
+            border: 1px solid #ddd; 
+            border-radius: 4px; 
+            font-size: 1rem;
+            box-sizing: border-box;
+          }
+          button { 
+            width: 100%; 
+            padding: 0.75rem; 
+            background: #667eea; 
+            color: white; 
+            border: none; 
+            border-radius: 4px; 
+            font-size: 1rem; 
+            cursor: pointer; 
+            font-weight: 500;
+          }
+          button:hover { background: #5a67d8; }
+          .error { color: #e53e3e; margin-top: 0.5rem; }
+          .info { 
+            background: #e6fffa; 
+            border: 1px solid #81e6d9; 
+            padding: 1rem; 
+            border-radius: 4px; 
+            margin-bottom: 1rem; 
+            color: #234e52;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>Login</h1>
+          <div class="info">
+            <strong>Default Admin Account:</strong><br>
+            Email: admin@localhost<br>
+            Password: admin123
+          </div>
+          <form id="loginForm">
+            <div class="form-group">
+              <label for="email">Email:</label>
+              <input type="email" id="email" name="email" required>
+            </div>
+            <div class="form-group">
+              <label for="password">Password:</label>
+              <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit">Login</button>
+            <div id="error" class="error"></div>
+          </form>
+        </div>
+        
+        <script>
+          document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = '';
+            
+            const formData = new FormData(e.target);
+            const email = formData.get('email');
+            const password = formData.get('password');
+            
+            try {
+              const response = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ email, password })
+              });
+              
+              const result = await response.json();
+              
+              if (result.success) {
+                window.location.href = '/dashboard';
+              } else {
+                errorDiv.textContent = result.message || 'Login failed';
+              }
+            } catch (error) {
+              errorDiv.textContent = 'Network error. Please try again.';
+            }
+          });
+        </script>
+      </body>
+      </html>
+    `);
+  });
+
   // Login route
   app.post('/api/auth/login', (req, res, next) => {
     passport.authenticate('local', (err: any, user: any, info: any) => {

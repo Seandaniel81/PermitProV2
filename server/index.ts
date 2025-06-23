@@ -55,6 +55,13 @@ app.use((req, res, next) => {
     console.log("Using SQLite with manual admin user setup");
   }
   
+  // Register authentication routes FIRST to ensure they take priority over frontend routing
+  if (process.env.FORCE_LOCAL_AUTH === 'true') {
+    const { setupLocalAuth } = await import('./local-auth');
+    await setupLocalAuth(app);
+    console.log('Pre-registered local SQLite authentication routes');
+  }
+  
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
