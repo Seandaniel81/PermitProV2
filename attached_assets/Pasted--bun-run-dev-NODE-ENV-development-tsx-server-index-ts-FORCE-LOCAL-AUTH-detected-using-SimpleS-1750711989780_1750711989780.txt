@@ -1,0 +1,45 @@
+└─$ bun run dev
+$ NODE_ENV=development tsx server/index.ts
+FORCE_LOCAL_AUTH detected - using SimpleSQLiteStorage
+Forced SQLite database for all deployments
+Using SQLite with manual admin user setup
+Pre-registered local SQLite authentication routes
+4:50:50 PM [express] serving on port 5000
+4:51:14 PM [express] GET /api/login 304 in 2ms
+Retrieved user: {
+  "id": "admin",
+  "email": "admin@localhost",
+  "passwordHash": "$2b$10$MkSYZfBHBJCvw9aC.omxS.Zm84xIiambDwEE2hcuXyPGNdroTLNc6",
+  "firstName": "Admin",
+  "lastName": "User",
+  "profileImageUrl": null,
+  "role": "admin",
+  "isActive": true,
+  "approvalStatus": "approved",
+  "approvedBy": null,
+  "approvedAt": 1750711524,
+  "rejectionReason": null,
+  "company": null,
+  "phone": null,
+  "lastLoginAt": null,
+  "createdAt": 1750711524,
+  "updatedAt": 1750711524
+}
+4:51:38 PM [express] POST /api/auth/login 200 in 146ms :: {"success":true,"user":{"id":"admin","emai…
+
+/home/archie/PermitProV2/node_modules/better-sqlite3/lib/methods/wrappers.js:5
+        return this[cppdb].prepare(sql, this, false);
+                           ^
+SqliteError: no such table: permit_packages
+    at Database.prepare (/home/archie/PermitProV2/node_modules/better-sqlite3/lib/methods/wrappers.js:5:21)
+    at BetterSQLiteSession.prepareQuery (/home/archie/PermitProV2/node_modules/src/better-sqlite3/session.ts:50:28)
+    at BetterSQLiteSession.prepareOneTimeQuery (/home/archie/PermitProV2/node_modules/src/sqlite-core/session.ts:135:15)
+    at SQLiteSelectBase._prepare (/home/archie/PermitProV2/node_modules/src/sqlite-core/query-builders/select.ts:865:85)
+    at SQLiteSelectBase.all (/home/archie/PermitProV2/node_modules/src/sqlite-core/query-builders/select.ts:884:15)
+    at SQLiteSelectBase.execute (/home/archie/PermitProV2/node_modules/src/sqlite-core/query-builders/select.ts:896:15)
+    at SQLiteSelectBase.then (/home/archie/PermitProV2/node_modules/src/query-promise.ts:31:15) {
+  code: 'SQLITE_ERROR'
+}
+
+Node.js v24.2.0
+error: script "dev" exited with code 1
