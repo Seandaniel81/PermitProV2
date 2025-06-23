@@ -28,13 +28,17 @@ else
     exit 1
 fi
 
-# Check database contents
+# Check database contents by testing authentication
 echo "2. Verifying database setup..."
-ADMIN_COUNT=$(sqlite3 permit_system.db "SELECT COUNT(*) FROM users WHERE email='admin@localhost';" 2>/dev/null || echo "0")
-if [ "$ADMIN_COUNT" = "1" ]; then
-    echo "   ✓ Admin user exists in database"
+AUTH_TEST=$(curl -s -X POST http://localhost:5000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@localhost","password":"admin123"}' 2>/dev/null)
+
+if echo "$AUTH_TEST" | grep -q '"success":true'; then
+    echo "   ✓ Admin user exists and authentication working"
 else
-    echo "   ✗ Admin user not found in database"
+    echo "   ✗ Admin user authentication failed"
+    echo "   Response: $AUTH_TEST"
     exit 1
 fi
 
