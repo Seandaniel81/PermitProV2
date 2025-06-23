@@ -1,105 +1,130 @@
 #!/bin/bash
 
 # Quick Setup Script for Permit Management System
+# Provides working SQLite authentication for Kali Linux
+
 set -e
 
-echo "🚀 Quick Setup for Permit Management System"
-echo "============================================"
+echo "Setting up Permit Management System with SQLite Authentication..."
 
-# Check if Bun is installed
-if ! command -v bun &> /dev/null; then
-    echo "❌ Bun is not installed. Installing Bun..."
-    curl -fsSL https://bun.sh/install | bash
-    source ~/.bashrc || source ~/.zshrc || true
-    
-    if ! command -v bun &> /dev/null; then
-        echo "❌ Bun installation failed. Please install manually from https://bun.sh"
-        exit 1
-    fi
-fi
+# Generate secure session secret
+SESSION_SECRET=$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | base64 | tr -d "=+/" | cut -c1-32)
 
-echo "✅ Bun found: $(bun --version)"
-
-# Get database URL from user
-read -p "Enter your PostgreSQL connection string: " DATABASE_URL
-
-if [ -z "$DATABASE_URL" ]; then
-    echo "❌ DATABASE_URL is required"
-    exit 1
-fi
-
-# Get OAuth credentials from user
-echo ""
-echo "🔐 OAuth Configuration Required"
-echo "You need to provide your own Google OAuth credentials:"
-echo "1. Go to https://console.cloud.google.com/"
-echo "2. Create a new project or select existing one"
-echo "3. Enable Google+ API"
-echo "4. Create OAuth 2.0 Client ID credentials"
-echo "5. Add your domain to authorized origins"
-echo ""
-read -p "Enter your Google OAuth Client ID: " OIDC_CLIENT_ID
-read -p "Enter your Google OAuth Client Secret: " OIDC_CLIENT_SECRET
-
-if [ -z "$OIDC_CLIENT_ID" ] || [ -z "$OIDC_CLIENT_SECRET" ]; then
-    echo "❌ OAuth credentials are required"
-    exit 1
-fi
-
-echo "📦 Installing dependencies..."
-bun install
-
-echo "📁 Creating directories..."
-mkdir -p uploads logs backups
-
-echo "⚙️ Creating configuration..."
-SESSION_SECRET=$(openssl rand -hex 32)
+# Create .env configuration
 cat > .env << EOF
-# Database Configuration
-DATABASE_URL=$DATABASE_URL
-
-# Authentication - OpenID Connect Configuration
-SESSION_SECRET=$SESSION_SECRET
-OIDC_ISSUER_URL=https://accounts.google.com
-OIDC_CLIENT_ID=$OIDC_CLIENT_ID
-OIDC_CLIENT_SECRET=$OIDC_CLIENT_SECRET
-ALLOWED_DOMAINS=localhost,swonger.tplinkdns.com
-AUTO_APPROVE_USERS=true
-
-# Application Settings
-NODE_ENV=production
+DATABASE_URL=file:./permit_system.db
+SESSION_SECRET=${SESSION_SECRET}
+FORCE_LOCAL_AUTH=true
+USE_DEV_AUTH=true
+NODE_ENV=development
 PORT=5000
-
-# File Upload Settings
 UPLOAD_DIR=./uploads
 MAX_FILE_SIZE=10485760
 EOF
 
-echo "🔨 Building application..."
-bun run build
+echo "Environment configuration created"
 
-echo "🗄️ Setting up database..."
-if [ -f scripts/setup-database.ts ]; then
-    bun run scripts/setup-database.ts
-else
-    echo "⚠️ Database setup script not found. Running db:push..."
-    bun run db:push
+# Create uploads directory
+mkdir -p uploads
+chmod 755 uploads
+
+# Install dependencies if needed
+if [ ! -d "node_modules" ]; then
+    echo "Installing dependencies..."
+    npm install
 fi
 
+# Create SQLite database and admin user
+cat > temp-db-setup.js << 'EOF'
+const Database = require('better-sqlite3');
+const bcrypt = require('bcrypt');
+
+async function setup() {
+    console.log('Creating SQLite database...');
+    const db = new Database('./permit_system.db');
+    
+    // Create users table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            first_name TEXT,
+            last_name TEXT,
+            profile_image_url TEXT,
+            role TEXT DEFAULT 'user',
+            is_active INTEGER DEFAULT 1,
+            approval_status TEXT DEFAULT 'approved',
+            approved_by TEXT,
+            approved_at INTEGER,
+            rejection_reason TEXT,
+            company TEXT,
+            phone TEXT,
+            last_login_at INTEGER,
+            created_at INTEGER DEFAULT (unixepoch()),
+            updated_at INTEGER DEFAULT (unixepoch())
+        );
+    `);
+    
+    // Create sessions table for authentication
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS sessions (
+            sid TEXT PRIMARY KEY,
+            sess TEXT NOT NULL,
+            expire INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS IDX_session_expire ON sessions(expire);
+    `);
+    
+    // Create admin user
+    const hashedPassword = await bcrypt.hash('admin123', 10);
+    const now = Math.floor(Date.now() / 1000);
+    
+    const insertUser = db.prepare(`
+        INSERT OR REPLACE INTO users (
+            id, email, password_hash, first_name, last_name, 
+            role, is_active, approval_status, approved_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    
+    insertUser.run(
+        'admin',
+        'admin@localhost', 
+        hashedPassword,
+        'Admin',
+        'User',
+        'admin',
+        1,
+        'approved',
+        now,
+        now,
+        now
+    );
+    
+    console.log('Database setup completed');
+    console.log('Admin user: admin@localhost / admin123');
+    
+    db.close();
+}
+
+setup().catch(console.error);
+EOF
+
+# Run database setup
+node temp-db-setup.js
+rm temp-db-setup.js
+
 echo ""
-echo "✅ Setup completed successfully!"
+echo "Setup completed successfully!"
 echo ""
-echo "🎉 Your permit management system is ready!"
+echo "Admin Login Credentials:"
+echo "  Email: admin@localhost"
+echo "  Password: admin123"
 echo ""
 echo "To start the application:"
-echo "  bun start"
+echo "  npm run dev"
 echo ""
-echo "For development mode:"
-echo "  bun run dev"
+echo "Then access at:"
+echo "  http://localhost:5000/api/login"
 echo ""
-echo "The application will be available at: http://localhost:5000"
-echo ""
-echo "📋 Next steps:"
-echo "1. Configure OAuth provider (see OIDC_SETUP.md)"
-echo "2. Update ALLOWED_DOMAINS in .env file for production"
-echo "3. Set up SSL certificates for production deployment"
+echo "The system is configured for local SQLite authentication."
