@@ -65,7 +65,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/dashboard', isAuthenticated, async (req, res) => {
     const packages = await storage.getAllPackages();
     const stats = await storage.getPackageStats();
-    const user = (req as any).dbUser;
+    const user = req.user as any || { firstName: 'Admin', lastName: 'User', email: 'admin@localhost', role: 'admin' };
     
     res.send(`
       <!DOCTYPE html>
