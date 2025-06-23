@@ -59,8 +59,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Auth middleware - use OIDC
-  await setupLocalAuth(app);
+  // Auth middleware - use appropriate auth based on configuration
+  if (process.env.FORCE_LOCAL_AUTH === 'true') {
+    await setupLocalAuth(app);
+    console.log('Using local SQLite authentication');
+  } else if (process.env.USE_DEV_AUTH === 'true') {
+    const { setupAuth } = await import("./auth");
+    await setupAuth(app);
+    console.log('Using development OIDC authentication');
+  } else {
+    const { setupAuth } = await import("./auth");
+    await setupAuth(app);
+    console.log('Using production OIDC authentication');
+  }
 
   // Dashboard route - redirect authenticated users here
   app.get('/dashboard', isAuthenticated, async (req, res) => {

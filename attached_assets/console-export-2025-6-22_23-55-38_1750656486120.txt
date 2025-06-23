@@ -1,0 +1,10 @@
+23:53:46.769 Partitioned cookie or storage access was provided to “http://localhost:5000/api/login” because it is loaded in the third-party context and dynamic state partitioning is enabled.
+23:53:46.990 A resource is blocked by OpaqueResponseBlocking, please check browser console for details. favicon.ico
+23:55:27.200 Navigated to http://localhost:5000/
+23:55:32.480 Navigated to http://localhost:5000/api/login
+23:55:32.560 GET
+http://localhost:5000/api/login
+[HTTP/1.1 500 Internal Server Error 14ms]
+
+23:55:32.878 Partitioned cookie or storage access was provided to “http://localhost:5000/api/login” because it is loaded in the third-party context and dynamic state partitioning is enabled.
+23:55:33.516 A resource is blocked by OpaqueResponseBlocking, please check browser console for details. favicon.ico
