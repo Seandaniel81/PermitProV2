@@ -16,7 +16,7 @@ import {
   packageDocuments,
   users,
   settings
-} from "@shared/schema";
+} from "../shared/sqlite-schema";
 import { db } from "./db";
 import { eq, desc } from "drizzle-orm";
 import { IStorage } from "./storage";

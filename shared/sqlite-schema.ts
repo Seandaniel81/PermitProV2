@@ -15,13 +15,13 @@ export const users = sqliteTable("users", {
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   approvalStatus: text("approval_status").notNull().default("pending"), // pending, approved, rejected
   approvedBy: text("approved_by"),
-  approvedAt: integer("approved_at"),
+  approvedAt: integer("approved_at", { mode: "timestamp" }),
   rejectionReason: text("rejection_reason"),
   company: text("company"),
   phone: text("phone"),
-  lastLoginAt: integer("last_login_at"),
-  createdAt: integer("created_at").notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
-  updatedAt: integer("updated_at").notNull().$defaultFn(() => Math.floor(Date.now() / 1000)),
+  lastLoginAt: integer("last_login_at", { mode: "timestamp" }),
+  createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
 
 // Session storage table for SQLite
