@@ -22,7 +22,7 @@ const configSchema = z.object({
   
   // Server configuration
   server: z.object({
-    port: z.number().int().min(1).max(65535).default(5000),
+    port: z.number().int().min(1).max(65535).default(process.env.NODE_ENV === 'production' ? 3001 : 5000),
     host: z.string().default('0.0.0.0'),
     environment: z.enum(['development', 'production', 'test']).default('development'),
   }),
