@@ -1,23 +1,18 @@
-// CRITICAL: Force SQLite configuration BEFORE any imports
-process.env.DATABASE_URL = 'file:./permit_system.db';
-process.env.FORCE_LOCAL_AUTH = 'true';
-// Clear PostgreSQL environment variables immediately
-delete process.env.PGDATABASE;
-delete process.env.PGUSER;
-delete process.env.PGPASSWORD;
-delete process.env.PGHOST;
-delete process.env.PGPORT;
+// Use PostgreSQL configuration from environment
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL environment variable is required');
+}
 
 import 'dotenv/config';
 
-console.log('Forced SQLite database for all deployments');
+console.log('Using PostgreSQL database for production deployment');
 
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { seedDatabase } from "./seed-database";
 import { config } from "./config";
-import { setupAuth } from "./auth";
+import { setupDualAuth } from "./dual-auth";
 
 const app = express();
 app.use(express.json());
@@ -61,12 +56,9 @@ app.use((req, res, next) => {
     console.log("Using SQLite with manual admin user setup");
   }
   
-  // Register authentication routes FIRST to ensure they take priority over frontend routing
-  if (process.env.FORCE_LOCAL_AUTH === 'true') {
-    const { setupLocalAuth } = await import('./local-auth');
-    await setupLocalAuth(app);
-    console.log('Pre-registered local SQLite authentication routes');
-  }
+  // Setup dual authentication (local + GitHub OAuth)
+  await setupDualAuth(app);
+  console.log('Configured dual authentication: local auth + GitHub OAuth');
   
   const server = await registerRoutes(app);
 

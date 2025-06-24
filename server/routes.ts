@@ -1,925 +1,298 @@
 import type { Express } from "express";
-import express from "express";
 import { createServer, type Server } from "http";
-// Dynamic storage import will be done after environment setup
-// Import authentication - use local auth for development
-import { setupLocalAuth, isAuthenticated, isAdmin } from "./local-auth";
-import { healthMonitor } from "./health-monitor";
-import { config } from "./config";
+import { storage } from "./storage";
+import { isAuthenticated, isAdmin } from "./dual-auth";
+import bcrypt from "bcrypt";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { 
-  insertPermitPackageSchema, 
-  updatePermitPackageSchema,
-  insertDocumentSchema,
-  updateDocumentSchema,
-  insertSettingSchema,
-  updateSettingSchema,
-  PACKAGE_STATUSES,
-  DEFAULT_BUILDING_PERMIT_DOCS
-} from "@shared/schema";
+
+// Configure multer for file uploads
+const uploadDir = process.env.UPLOAD_DIR || './uploads';
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const upload = multer({
+  dest: uploadDir,
+  limits: {
+    fileSize: parseInt(process.env.MAX_FILE_SIZE || '10485760'), // 10MB default
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/gif', 
+                         'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('File type not allowed'));
+    }
+  }
+});
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Dynamic import of storage after environment setup
-  const { storage } = await import("./storage");
-  
-  // Ensure uploads directory exists
-  const uploadsDir = path.join(process.cwd(), "uploads");
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-  }
-
-  // Configure multer for file uploads
-  const storage_multer = multer.diskStorage({
-    destination: (req, file, cb) => {
-      cb(null, uploadsDir);
-    },
-    filename: (req, file, cb) => {
-      // Create unique filename with timestamp
-      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-      const extension = path.extname(file.originalname);
-      cb(null, `${file.fieldname}-${uniqueSuffix}${extension}`);
-    }
-  });
-
-  const upload = multer({ 
-    storage: storage_multer,
-    limits: {
-      fileSize: 10 * 1024 * 1024, // 10MB limit
-    },
-    fileFilter: (req, file, cb) => {
-      // Allow common document types
-      const allowedTypes = /\.(pdf|jpg|jpeg|png|gif|doc|docx|xls|xlsx|txt)$/i;
-      if (allowedTypes.test(file.originalname)) {
-        cb(null, true);
-      } else {
-        cb(new Error('Invalid file type. Only documents and images are allowed.'));
-      }
-    }
-  });
-
-  // Auth middleware already set up in index.ts to ensure proper routing priority
-
-  // Dashboard route - redirect authenticated users here
-  app.get('/dashboard', isAuthenticated, async (req, res) => {
-    const packages = await storage.getAllPackages();
-    const stats = await storage.getPackageStats();
-    const user = req.user as any || { firstName: 'Admin', lastName: 'User', email: 'admin@localhost', role: 'admin' };
-    
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Permit Management Dashboard</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: system-ui, sans-serif; background: #f8fafc; }
-          .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 2rem; }
-          .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
-          .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
-          .stat-card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-          .stat-number { font-size: 2rem; font-weight: bold; color: #1e40af; }
-          .stat-label { color: #64748b; font-size: 0.875rem; margin-top: 0.25rem; }
-          .packages { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-          .packages-header { padding: 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: between; align-items: center; }
-          .btn { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 6px; text-decoration: none; display: inline-block; }
-          .btn:hover { background: #2563eb; }
-          .package-grid { display: grid; gap: 1rem; padding: 1.5rem; }
-          .package-card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 1rem; }
-          .package-title { font-weight: 600; margin-bottom: 0.5rem; }
-          .package-meta { font-size: 0.875rem; color: #64748b; margin-bottom: 0.5rem; }
-          .status { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
-          .status-draft { background: #f3f4f6; color: #374151; }
-          .status-in-progress { background: #fef3c7; color: #92400e; }
-          .status-ready { background: #d1fae5; color: #065f46; }
-          .status-submitted { background: #dbeafe; color: #1e40af; }
-          .progress-bar { background: #e5e7eb; height: 4px; border-radius: 2px; margin-top: 0.5rem; }
-          .progress-fill { background: #3b82f6; height: 100%; border-radius: 2px; }
-          .logout { color: #dc2626; text-decoration: none; }
-          .admin-section { margin-top: 2rem; }
-          .quick-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
-          .action-card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-align: center; }
-          .action-card h3 { margin-bottom: 0.5rem; color: #1f2937; }
-          .action-card p { color: #64748b; font-size: 0.875rem; margin-bottom: 1rem; }
-          .action-card .btn { width: 100%; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto;">
-            <h1>Permit Management System</h1>
-            <div style="display: flex; align-items: center; gap: 1rem;">
-              <span style="color: #64748b; font-size: 0.875rem;">Welcome, ${user.firstName} ${user.lastName}</span>
-              <span style="background: #3b82f6; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem;">${user.role}</span>
-              <a href="/api/logout" class="logout">Logout</a>
-            </div>
-          </div>
-        </div>
-        
-        ${user.role === 'admin' ? `
-        <div style="background: white; border-bottom: 1px solid #e2e8f0;">
-          <div style="max-width: 1200px; margin: 0 auto; padding: 0 2rem;">
-            <nav style="display: flex; gap: 2rem;">
-              <a href="/dashboard" style="padding: 1rem 0; color: #3b82f6; text-decoration: none; border-bottom: 2px solid #3b82f6;">Dashboard</a>
-              <a href="/admin/users" style="padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent;">User Management</a>
-              <a href="/admin/packages" style="padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent;">All Packages</a>
-              <a href="/admin/settings" style="padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent;">System Settings</a>
-              <a href="/admin/reports" style="padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent;">Reports</a>
-            </nav>
-          </div>
-        </div>
-        ` : ''}
-        
-        <div class="container">
-          <div class="stats">
-            <div class="stat-card">
-              <div class="stat-number">${stats.total}</div>
-              <div class="stat-label">Total Packages</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-number">${stats.draft}</div>
-              <div class="stat-label">Draft</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-number">${stats.inProgress}</div>
-              <div class="stat-label">In Progress</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-number">${stats.readyToSubmit}</div>
-              <div class="stat-label">Ready to Submit</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-number">${stats.submitted}</div>
-              <div class="stat-label">Submitted</div>
-            </div>
-          </div>
-          
-          <div class="packages">
-            <div class="packages-header">
-              <h2>Recent Packages</h2>
-              <a href="/create-package" class="btn">New Package</a>
-            </div>
-            <div class="package-grid">
-              ${packages.slice(0, 10).map(pkg => `
-                <div class="package-card">
-                  <div class="package-title">${pkg.projectName}</div>
-                  <div class="package-meta">
-                    ${pkg.permitType} • ${pkg.address}
-                  </div>
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;">
-                    <span class="status status-${pkg.status.replace(/\s+/g, '-').toLowerCase()}">${pkg.status}</span>
-                    <span style="font-size: 0.75rem; color: #64748b;">
-                      ${pkg.completedDocuments}/${pkg.totalDocuments} docs
-                    </span>
-                  </div>
-                  <div class="progress-bar">
-                    <div class="progress-fill" style="width: ${pkg.progressPercentage}%"></div>
-                  </div>
-                </div>
-              `).join('')}
-            </div>
-          </div>
-          
-          ${user.role === 'admin' ? `
-          <div class="admin-section">
-            <div class="quick-actions">
-              <div class="action-card">
-                <h3>User Management</h3>
-                <p>Manage user accounts and permissions</p>
-                <a href="/admin/users" class="btn">Manage Users</a>
-              </div>
-              <div class="action-card">
-                <h3>Package Management</h3>
-                <p>View and manage all permit packages</p>
-                <a href="/admin/packages" class="btn">View All Packages</a>
-              </div>
-              <div class="action-card">
-                <h3>System Settings</h3>
-                <p>Configure application settings</p>
-                <a href="/admin/settings" class="btn">Settings</a>
-              </div>
-              <div class="action-card">
-                <h3>Reports</h3>
-                <p>Generate system reports and analytics</p>
-                <a href="/admin/reports" class="btn">View Reports</a>
-              </div>
-            </div>
-          </div>
-          ` : ''}
-        </div>
-      </body>
-      </html>
-    `);
-  });
-
-  // Landing page - redirect authenticated users to dashboard
-  app.get('/', (req, res) => {
-    if (req.isAuthenticated()) {
-      return res.redirect('/dashboard');
-    }
-    
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Permit Tracker</title>
-        <style>
-          body { 
-            font-family: system-ui, sans-serif; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-            min-height: 100vh; 
-            margin: 0;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          }
-          .container { 
-            text-align: center; 
-            background: white; 
-            padding: 3rem; 
-            border-radius: 12px; 
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            max-width: 400px;
-          }
-          h1 { margin-bottom: 1rem; color: #1f2937; }
-          p { margin-bottom: 2rem; color: #6b7280; }
-          .btn { 
-            background: #3b82f6; 
-            color: white; 
-            border: none; 
-            padding: 12px 24px; 
-            border-radius: 6px; 
-            text-decoration: none; 
-            display: inline-block;
-            font-size: 16px;
-            font-weight: 500;
-          }
-          .btn:hover { background: #2563eb; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <h1>Permit Package Tracker</h1>
-          <p>Streamline your building permit process with comprehensive package management.</p>
-          <a href="/api/login" class="btn">Sign In</a>
-        </div>
-      </body>
-      </html>
-    `);
-  });
-
-  // Serve uploaded files
-  app.get('/api/files/:filename', isAuthenticated, (req, res) => {
+  // Health check endpoint
+  app.get('/api/health', async (req, res) => {
     try {
-      const filename = req.params.filename;
-      const filePath = path.join(uploadsDir, filename);
-      
-      // Check if file exists
-      if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ message: 'File not found' });
-      }
-
-      // Get file stats
-      const stats = fs.statSync(filePath);
-      const fileExtension = path.extname(filename).toLowerCase();
-      
-      // Set appropriate content type
-      let contentType = 'application/octet-stream';
-      if (fileExtension === '.pdf') {
-        contentType = 'application/pdf';
-      } else if (['.jpg', '.jpeg'].includes(fileExtension)) {
-        contentType = 'image/jpeg';
-      } else if (fileExtension === '.png') {
-        contentType = 'image/png';
-      } else if (fileExtension === '.gif') {
-        contentType = 'image/gif';
-      }
-
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Length', stats.size);
-      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-      
-      // Stream the file
-      const fileStream = fs.createReadStream(filePath);
-      fileStream.pipe(res);
+      // Test database connection
+      await storage.getPackageStats();
+      res.json({ 
+        status: 'healthy', 
+        database: 'connected',
+        timestamp: new Date().toISOString() 
+      });
     } catch (error) {
-      console.error('Error serving file:', error);
-      res.status(500).json({ message: 'Error serving file' });
+      res.status(500).json({ 
+        status: 'unhealthy', 
+        database: 'disconnected',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString() 
+      });
     }
   });
 
-  // OAuth configuration test endpoint
-  app.get("/api/oauth-status", (req, res) => {
-    const clientId = process.env.OIDC_CLIENT_ID;
-    const clientSecret = process.env.OIDC_CLIENT_SECRET;
-    const useDevAuth = process.env.USE_DEV_AUTH;
-    
-    res.json({
-      clientIdConfigured: clientId && clientId !== 'your-client-id',
-      clientSecretConfigured: clientSecret && clientSecret !== 'your-client-secret',
-      developmentMode: useDevAuth === 'true',
-      expectedRedirectURI: 'http://localhost:5000/api/callback',
-      currentHostname: req.hostname,
-      allowedDomains: process.env.ALLOWED_DOMAINS?.split(',') || [],
-      instructions: {
-        step1: "Go to Google Cloud Console (console.cloud.google.com)",
-        step2: "Navigate to APIs & Services > Credentials", 
-        step3: "Find your OAuth 2.0 Client ID",
-        step4: "Add this exact redirect URI: http://localhost:5000/api/callback",
-        step5: "Set USE_DEV_AUTH=false in .env to test real OAuth"
-      }
-    });
-  });
-
-  // Auth routes are handled by simple-auth.ts
-
-  // Admin User Management Page
-  app.get('/admin/users', isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const users = await storage.getAllUsers();
-      const currentUser = (req as any).dbUser;
-      
-      res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>User Management - Permit System</title>
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: system-ui, sans-serif; background: #f8fafc; }
-            .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 2rem; }
-            .nav { background: white; border-bottom: 1px solid #e2e8f0; }
-            .nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 2rem; display: flex; gap: 2rem; }
-            .nav a { padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent; }
-            .nav a.active { color: #3b82f6; border-bottom-color: #3b82f6; }
-            .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
-            .users-table { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
-            .table-header { padding: 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { text-align: left; padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; }
-            th { background: #f8fafc; font-weight: 600; color: #374151; }
-            .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
-            .status-approved { background: #d1fae5; color: #065f46; }
-            .status-pending { background: #fef3c7; color: #92400e; }
-            .status-rejected { background: #fee2e2; color: #dc2626; }
-            .role-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; background: #3b82f6; color: white; }
-            .btn { background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 0.875rem; cursor: pointer; }
-            .btn-sm { padding: 4px 8px; font-size: 0.75rem; }
-            .btn-success { background: #10b981; }
-            .btn-danger { background: #ef4444; }
-            .logout { color: #dc2626; text-decoration: none; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto;">
-              <h1>User Management</h1>
-              <div style="display: flex; align-items: center; gap: 1rem;">
-                <span style="color: #64748b; font-size: 0.875rem;">Welcome, ${currentUser.firstName} ${currentUser.lastName}</span>
-                <span class="role-badge">${currentUser.role}</span>
-                <a href="/api/logout" class="logout">Logout</a>
-              </div>
-            </div>
-          </div>
-          
-          <div class="nav">
-            <div class="nav-inner">
-              <a href="/dashboard">Dashboard</a>
-              <a href="/admin/users" class="active">User Management</a>
-              <a href="/admin/packages">All Packages</a>
-              <a href="/admin/settings">System Settings</a>
-              <a href="/admin/reports">Reports</a>
-            </div>
-          </div>
-          
-          <div class="container">
-            <div class="users-table">
-              <div class="table-header">
-                <h2>System Users</h2>
-                <button class="btn" onclick="window.location.reload()">Refresh</button>
-              </div>
-              <table>
-                <thead>
-                  <tr>
-                    <th>User</th>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Status</th>
-                    <th>Company</th>
-                    <th>Last Login</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${users.map(user => `
-                    <tr>
-                      <td>
-                        <div style="display: flex; align-items: center; gap: 0.75rem;">
-                          ${user.profileImageUrl ? `<img src="${user.profileImageUrl}" alt="" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">` : `<div style="width: 32px; height: 32px; border-radius: 50%; background: #e5e7eb; display: flex; align-items: center; justify-content: center; color: #6b7280; font-weight: 600;">${user.firstName?.[0] || 'U'}</div>`}
-                          <div>
-                            <div style="font-weight: 500;">${user.firstName || ''} ${user.lastName || ''}</div>
-                            <div style="font-size: 0.75rem; color: #6b7280;">ID: ${user.id}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td>${user.email || 'N/A'}</td>
-                      <td><span class="role-badge">${user.role}</span></td>
-                      <td><span class="status-badge status-${user.approvalStatus}">${user.approvalStatus}</span></td>
-                      <td>${user.company || 'N/A'}</td>
-                      <td>${user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleDateString() : 'Never'}</td>
-                      <td>
-                        <div style="display: flex; gap: 0.5rem;">
-                          ${user.approvalStatus === 'pending' ? `<button class="btn btn-sm btn-success" onclick="approveUser('${user.id}')">Approve</button>` : ''}
-                          ${user.isActive ? `<button class="btn btn-sm btn-danger" onclick="deactivateUser('${user.id}')">Deactivate</button>` : `<button class="btn btn-sm btn-success" onclick="activateUser('${user.id}')">Activate</button>`}
-                          <button class="btn btn-sm btn-warning" onclick="resetPassword('${user.id}')">Reset Password</button>
-                        </div>
-                      </td>
-                    </tr>
-                  `).join('')}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          
-          <script>
-            async function approveUser(userId) {
-              if (confirm('Approve this user?')) {
-                try {
-                  const response = await fetch('/api/admin/users/' + userId, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ approvalStatus: 'approved' })
-                  });
-                  if (response.ok) {
-                    location.reload();
-                  } else {
-                    alert('Failed to approve user');
-                  }
-                } catch (error) {
-                  alert('Error: ' + error.message);
-                }
-              }
-            }
-            
-            async function deactivateUser(userId) {
-              if (confirm('Deactivate this user?')) {
-                try {
-                  const response = await fetch('/api/admin/users/' + userId, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ isActive: false })
-                  });
-                  if (response.ok) {
-                    location.reload();
-                  } else {
-                    alert('Failed to deactivate user');
-                  }
-                } catch (error) {
-                  alert('Error: ' + error.message);
-                }
-              }
-            }
-            
-            async function activateUser(userId) {
-              if (confirm('Activate this user?')) {
-                try {
-                  const response = await fetch('/api/admin/users/' + userId, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ isActive: true })
-                  });
-                  if (response.ok) {
-                    location.reload();
-                  } else {
-                    alert('Failed to activate user');
-                  }
-                } catch (error) {
-                  alert('Error: ' + error.message);
-                }
-              }
-            }
-            
-            async function resetPassword(userId) {
-              if (confirm('Reset this user\'s password? They will need to use the new temporary password.')) {
-                try {
-                  const response = await fetch('/api/admin/users/' + userId + '/reset-password', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                  });
-                  if (response.ok) {
-                    const result = await response.json();
-                    alert('Password reset successful! New temporary password: ' + result.tempPassword + '\\n\\nPlease save this password and share it securely with the user.');
-                  } else {
-                    alert('Failed to reset password');
-                  }
-                } catch (error) {
-                  alert('Error: ' + error.message);
-                }
-              }
-            }
-          </script>
-        </body>
-        </html>
-      `);
-    } catch (error) {
-      console.error("Error in user management page:", error);
-      res.status(500).send("Error loading user management page");
-    }
-  });
-
-  // Admin API routes
+  // Admin user management routes
   app.get('/api/admin/users', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const users = await storage.getAllUsers();
       res.json(users);
     } catch (error) {
-      console.error("Error fetching users:", error);
-      res.status(500).json({ message: "Failed to fetch users" });
+      console.error('Error fetching users:', error);
+      res.status(500).json({ error: 'Failed to fetch users' });
     }
   });
 
-  app.patch('/api/admin/users/:id', isAuthenticated, isAdmin, async (req, res) => {
+  app.post('/api/admin/users', isAuthenticated, isAdmin, async (req, res) => {
     try {
-      const userId = req.params.id;
-      const updates = req.body;
-      const user = await storage.updateUser(userId, updates);
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
+      const { email, password, firstName, lastName, role = 'user', company, phone } = req.body;
+
+      if (!email || !password) {
+        return res.status(400).json({ error: 'Email and password are required' });
       }
-      res.json(user);
+
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(400).json({ error: 'User already exists' });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 10);
+      const userId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      const newUser = await storage.upsertUser({
+        id: userId,
+        email,
+        passwordHash,
+        firstName,
+        lastName,
+        role,
+        company,
+        phone,
+        isActive: true,
+        approvalStatus: 'approved',
+      });
+
+      res.json({ 
+        success: true, 
+        user: {
+          id: newUser.id,
+          email: newUser.email,
+          firstName: newUser.firstName,
+          lastName: newUser.lastName,
+          role: newUser.role,
+          isActive: newUser.isActive,
+          approvalStatus: newUser.approvalStatus
+        }
+      });
     } catch (error) {
-      console.error("Error updating user:", error);
-      res.status(500).json({ message: "Failed to update user" });
+      console.error('Error creating user:', error);
+      res.status(500).json({ error: 'Failed to create user' });
+    }
+  });
+
+  app.put('/api/admin/users/:id', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+
+      // Remove sensitive fields that shouldn't be updated directly
+      delete updates.passwordHash;
+      delete updates.id;
+      delete updates.createdAt;
+
+      const updatedUser = await storage.updateUser(id, updates);
+      
+      if (!updatedUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      res.json({ success: true, user: updatedUser });
+    } catch (error) {
+      console.error('Error updating user:', error);
+      res.status(500).json({ error: 'Failed to update user' });
     }
   });
 
   app.post('/api/admin/users/:id/reset-password', isAuthenticated, isAdmin, async (req, res) => {
     try {
-      const userId = req.params.id;
-      const tempPassword = await storage.resetUserPassword(userId);
-      res.json({ 
-        message: "Password reset successful", 
-        tempPassword: tempPassword 
-      });
+      const { id } = req.params;
+      const newPassword = await storage.resetUserPassword(id);
+      res.json({ success: true, newPassword });
     } catch (error) {
-      console.error("Error resetting password:", error);
-      res.status(500).json({ message: "Failed to reset password" });
+      console.error('Error resetting password:', error);
+      res.status(500).json({ error: 'Failed to reset password' });
     }
   });
 
-  // Admin Package Management Page
-  app.get('/admin/packages', isAuthenticated, isAdmin, async (req, res) => {
+  app.delete('/api/admin/users/:id', isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const currentUser = (req as any).dbUser;
+
+      if (id === currentUser.id) {
+        return res.status(400).json({ error: 'Cannot delete your own account' });
+      }
+
+      // Instead of deleting, deactivate the user
+      const updatedUser = await storage.updateUser(id, { isActive: false });
+      
+      if (!updatedUser) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      res.json({ success: true, message: 'User deactivated successfully' });
+    } catch (error) {
+      console.error('Error deactivating user:', error);
+      res.status(500).json({ error: 'Failed to deactivate user' });
+    }
+  });
+
+  // Package management routes
+  app.get('/api/packages', isAuthenticated, async (req, res) => {
     try {
       const packages = await storage.getAllPackages();
-      const users = await storage.getAllUsers();
-      const currentUser = (req as any).dbUser;
-      
-      res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Package Management - Permit System</title>
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: system-ui, sans-serif; background: #f8fafc; }
-            .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 2rem; }
-            .nav { background: white; border-bottom: 1px solid #e2e8f0; }
-            .nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 2rem; display: flex; gap: 2rem; }
-            .nav a { padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent; }
-            .nav a.active { color: #3b82f6; border-bottom-color: #3b82f6; }
-            .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
-            .packages-table { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
-            .table-header { padding: 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { text-align: left; padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; }
-            th { background: #f8fafc; font-weight: 600; color: #374151; }
-            .status-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
-            .status-draft { background: #f3f4f6; color: #374151; }
-            .status-in_progress { background: #fef3c7; color: #92400e; }
-            .status-ready_to_submit { background: #d1fae5; color: #065f46; }
-            .status-submitted { background: #dbeafe; color: #1e40af; }
-            .progress-bar { background: #e5e7eb; height: 4px; border-radius: 2px; margin-top: 0.25rem; width: 60px; }
-            .progress-fill { background: #3b82f6; height: 100%; border-radius: 2px; }
-            .btn { background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; text-decoration: none; font-size: 0.875rem; cursor: pointer; }
-            .btn-sm { padding: 4px 8px; font-size: 0.75rem; }
-            .btn-success { background: #10b981; }
-            .btn-danger { background: #ef4444; }
-            .role-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; background: #3b82f6; color: white; }
-            .logout { color: #dc2626; text-decoration: none; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto;">
-              <h1>Package Management</h1>
-              <div style="display: flex; align-items: center; gap: 1rem;">
-                <span style="color: #64748b; font-size: 0.875rem;">Welcome, ${currentUser.firstName} ${currentUser.lastName}</span>
-                <span class="role-badge">${currentUser.role}</span>
-                <a href="/api/logout" class="logout">Logout</a>
-              </div>
-            </div>
-          </div>
-          
-          <div class="nav">
-            <div class="nav-inner">
-              <a href="/dashboard">Dashboard</a>
-              <a href="/admin/users">User Management</a>
-              <a href="/admin/packages" class="active">All Packages</a>
-              <a href="/admin/settings">System Settings</a>
-              <a href="/admin/reports">Reports</a>
-            </div>
-          </div>
-          
-          <div class="container">
-            <div class="packages-table">
-              <div class="table-header">
-                <h2>All Permit Packages</h2>
-                <div style="display: flex; gap: 1rem;">
-                  <select onchange="filterPackages(this.value)" style="padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 4px;">
-                    <option value="">All Statuses</option>
-                    <option value="draft">Draft</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="ready_to_submit">Ready to Submit</option>
-                    <option value="submitted">Submitted</option>
-                  </select>
-                  <button class="btn" onclick="window.location.reload()">Refresh</button>
-                </div>
-              </div>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Package</th>
-                    <th>Type</th>
-                    <th>Status</th>
-                    <th>Progress</th>
-                    <th>Client</th>
-                    <th>Assigned To</th>
-                    <th>Created</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${packages.map(pkg => {
-                    const assignedUser = users.find(u => u.id === pkg.assignedTo);
-                    const createdUser = users.find(u => u.id === pkg.createdBy);
-                    return `
-                    <tr>
-                      <td>
-                        <div>
-                          <div style="font-weight: 500;">${pkg.projectName}</div>
-                          <div style="font-size: 0.75rem; color: #6b7280;">${pkg.address}</div>
-                        </div>
-                      </td>
-                      <td>${pkg.permitType}</td>
-                      <td><span class="status-badge status-${pkg.status}">${pkg.status.replace('_', ' ')}</span></td>
-                      <td>
-                        <div style="display: flex; align-items: center; gap: 0.5rem;">
-                          <div class="progress-bar">
-                            <div class="progress-fill" style="width: ${pkg.progressPercentage}%"></div>
-                          </div>
-                          <span style="font-size: 0.75rem; color: #6b7280;">${pkg.completedDocuments}/${pkg.totalDocuments}</span>
-                        </div>
-                      </td>
-                      <td>
-                        <div>
-                          <div style="font-weight: 500;">${pkg.clientName || 'N/A'}</div>
-                          <div style="font-size: 0.75rem; color: #6b7280;">${pkg.clientEmail || ''}</div>
-                        </div>
-                      </td>
-                      <td>${assignedUser ? `${assignedUser.firstName} ${assignedUser.lastName}` : 'Unassigned'}</td>
-                      <td>
-                        <div>
-                          <div>${new Date(pkg.createdAt).toLocaleDateString()}</div>
-                          <div style="font-size: 0.75rem; color: #6b7280;">${createdUser ? `${createdUser.firstName} ${createdUser.lastName}` : 'Unknown'}</div>
-                        </div>
-                      </td>
-                      <td>
-                        <div style="display: flex; gap: 0.5rem;">
-                          <button class="btn btn-sm" onclick="viewPackage(${pkg.id})">View</button>
-                          <button class="btn btn-sm btn-danger" onclick="deletePackage(${pkg.id})">Delete</button>
-                        </div>
-                      </td>
-                    </tr>
-                  `;
-                  }).join('')}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          
-          <script>
-            function filterPackages(status) {
-              const rows = document.querySelectorAll('tbody tr');
-              rows.forEach(row => {
-                if (!status || row.textContent.toLowerCase().includes(status.replace('_', ' '))) {
-                  row.style.display = '';
-                } else {
-                  row.style.display = 'none';
-                }
-              });
-            }
-            
-            function viewPackage(packageId) {
-              window.location.href = '/packages/' + packageId;
-            }
-            
-            async function deletePackage(packageId) {
-              if (confirm('Are you sure you want to delete this package? This action cannot be undone.')) {
-                try {
-                  const response = await fetch('/api/packages/' + packageId, {
-                    method: 'DELETE'
-                  });
-                  if (response.ok) {
-                    location.reload();
-                  } else {
-                    alert('Failed to delete package');
-                  }
-                } catch (error) {
-                  alert('Error: ' + error.message);
-                }
-              }
-            }
-          </script>
-        </body>
-        </html>
-      `);
+      res.json(packages);
     } catch (error) {
-      console.error("Error in package management page:", error);
-      res.status(500).send("Error loading package management page");
+      console.error('Error fetching packages:', error);
+      res.status(500).json({ error: 'Failed to fetch packages' });
     }
   });
 
-  // Admin Settings Page
-  app.get('/admin/settings', isAuthenticated, isAdmin, async (req, res) => {
+  app.get('/api/packages/:id', isAuthenticated, async (req, res) => {
     try {
-      const settings = await storage.getAllSettings();
-      const currentUser = (req as any).dbUser;
+      const { id } = req.params;
+      const pkg = await storage.getPackageWithDocuments(parseInt(id));
       
-      res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>System Settings - Permit System</title>
-          <meta name="viewport" content="width=device-width, initial-scale=1">
-          <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: system-ui, sans-serif; background: #f8fafc; }
-            .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 2rem; }
-            .nav { background: white; border-bottom: 1px solid #e2e8f0; }
-            .nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 2rem; display: flex; gap: 2rem; }
-            .nav a { padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent; }
-            .nav a.active { color: #3b82f6; border-bottom-color: #3b82f6; }
-            .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
-            .settings-grid { display: grid; gap: 1.5rem; }
-            .setting-card { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
-            .setting-header { padding: 1.5rem; border-bottom: 1px solid #e2e8f0; }
-            .setting-content { padding: 1.5rem; }
-            .form-group { margin-bottom: 1rem; }
-            .form-label { display: block; margin-bottom: 0.5rem; font-weight: 500; color: #374151; }
-            .form-input { width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; }
-            .form-textarea { width: 100%; padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; min-height: 100px; }
-            .btn { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
-            .btn:hover { background: #2563eb; }
-            .role-badge { padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 500; background: #3b82f6; color: white; }
-            .logout { color: #dc2626; text-decoration: none; }
-            .system-info { background: #f8fafc; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto;">
-              <h1>System Settings</h1>
-              <div style="display: flex; align-items: center; gap: 1rem;">
-                <span style="color: #64748b; font-size: 0.875rem;">Welcome, ${currentUser.firstName} ${currentUser.lastName}</span>
-                <span class="role-badge">${currentUser.role}</span>
-                <a href="/api/logout" class="logout">Logout</a>
-              </div>
-            </div>
-          </div>
-          
-          <div class="nav">
-            <div class="nav-inner">
-              <a href="/dashboard">Dashboard</a>
-              <a href="/admin/users">User Management</a>
-              <a href="/admin/packages">All Packages</a>
-              <a href="/admin/settings" class="active">System Settings</a>
-              <a href="/admin/reports">Reports</a>
-            </div>
-          </div>
-          
-          <div class="container">
-            <div class="settings-grid">
-              <div class="setting-card">
-                <div class="setting-header">
-                  <h2>System Information</h2>
-                </div>
-                <div class="setting-content">
-                  <div class="system-info">
-                    <div><strong>Application Version:</strong> 1.0.0</div>
-                    <div><strong>Database:</strong> PostgreSQL</div>
-                    <div><strong>Environment:</strong> ${process.env.NODE_ENV || 'development'}</div>
-                    <div><strong>Authentication:</strong> ${process.env.USE_DEV_AUTH === 'true' ? 'Local Development' : 'Google OAuth'}</div>
-                  </div>
-                </div>
-              </div>
-              
-              <div class="setting-card">
-                <div class="setting-header">
-                  <h2>Application Settings</h2>
-                </div>
-                <div class="setting-content">
-                  <form onsubmit="updateSettings(event)">
-                    <div class="form-group">
-                      <label class="form-label">Application Name</label>
-                      <input type="text" class="form-input" name="app_name" value="Permit Management System">
-                    </div>
-                    <div class="form-group">
-                      <label class="form-label">Default Permit Types</label>
-                      <textarea class="form-textarea" name="permit_types" placeholder="Enter permit types, one per line">Building Permit
-Electrical Permit
-Plumbing Permit
-Mechanical Permit
-Demolition Permit</textarea>
-                    </div>
-                    <div class="form-group">
-                      <label class="form-label">Auto-approve New Users</label>
-                      <select class="form-input" name="auto_approve">
-                        <option value="true" ${process.env.AUTO_APPROVE_USERS === 'true' ? 'selected' : ''}>Yes</option>
-                        <option value="false" ${process.env.AUTO_APPROVE_USERS !== 'true' ? 'selected' : ''}>No</option>
-                      </select>
-                    </div>
-                    <div class="form-group">
-                      <label class="form-label">System Email</label>
-                      <input type="email" class="form-input" name="system_email" value="admin@permittracker.com">
-                    </div>
-                    <button type="submit" class="btn">Save Settings</button>
-                  </form>
-                </div>
-              </div>
-              
-              <div class="setting-card">
-                <div class="setting-header">
-                  <h2>Document Management</h2>
-                </div>
-                <div class="setting-content">
-                  <div class="form-group">
-                    <label class="form-label">Maximum File Size (MB)</label>
-                    <input type="number" class="form-input" value="10" min="1" max="100">
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">Allowed File Types</label>
-                    <input type="text" class="form-input" value="PDF, DOC, DOCX, XLS, XLSX, JPG, PNG" readonly>
-                  </div>
-                  <div class="form-group">
-                    <label class="form-label">Storage Location</label>
-                    <input type="text" class="form-input" value="./uploads" readonly>
-                  </div>
-                </div>
-              </div>
-              
-              <div class="setting-card">
-                <div class="setting-header">
-                  <h2>Database Management</h2>
-                </div>
-                <div class="setting-content">
-                  <button class="btn" onclick="backupDatabase()" style="margin-right: 1rem;">Backup Database</button>
-                  <button class="btn" onclick="optimizeDatabase()">Optimize Database</button>
-                  <div style="margin-top: 1rem; font-size: 0.875rem; color: #6b7280;">
-                    Last backup: Never
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <script>
-            function updateSettings(event) {
-              event.preventDefault();
-              alert('Settings updated successfully!');
-            }
-            
-            function backupDatabase() {
-              if (confirm('Create a database backup? This may take a few minutes.')) {
-                alert('Database backup initiated. You will be notified when complete.');
-              }
-            }
-            
-            function optimizeDatabase() {
-              if (confirm('Optimize database performance? This may take a few minutes.')) {
-                alert('Database optimization initiated.');
-              }
-            }
-          </script>
-        </body>
-        </html>
-      `);
+      if (!pkg) {
+        return res.status(404).json({ error: 'Package not found' });
+      }
+
+      res.json(pkg);
     } catch (error) {
-      console.error("Error in settings page:", error);
-      res.status(500).send("Error loading settings page");
+      console.error('Error fetching package:', error);
+      res.status(500).json({ error: 'Failed to fetch package' });
+    }
+  });
+
+  app.post('/api/packages', isAuthenticated, async (req, res) => {
+    try {
+      const user = (req as any).dbUser;
+      const packageData = {
+        ...req.body,
+        createdBy: user.id,
+      };
+
+      const newPackage = await storage.createPackage(packageData);
+      res.json({ success: true, package: newPackage });
+    } catch (error) {
+      console.error('Error creating package:', error);
+      res.status(500).json({ error: 'Failed to create package' });
+    }
+  });
+
+  app.put('/api/packages/:id', isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+
+      const updatedPackage = await storage.updatePackage(parseInt(id), updates);
+      
+      if (!updatedPackage) {
+        return res.status(404).json({ error: 'Package not found' });
+      }
+
+      res.json({ success: true, package: updatedPackage });
+    } catch (error) {
+      console.error('Error updating package:', error);
+      res.status(500).json({ error: 'Failed to update package' });
+    }
+  });
+
+  app.delete('/api/packages/:id', isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const user = (req as any).dbUser;
+
+      const pkg = await storage.getPackage(parseInt(id));
+      if (!pkg) {
+        return res.status(404).json({ error: 'Package not found' });
+      }
+
+      // Only allow deletion by creator or admin
+      if (pkg.createdBy !== user.id && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Permission denied' });
+      }
+
+      const success = await storage.deletePackage(parseInt(id));
+      
+      if (!success) {
+        return res.status(500).json({ error: 'Failed to delete package' });
+      }
+
+      res.json({ success: true, message: 'Package deleted successfully' });
+    } catch (error) {
+      console.error('Error deleting package:', error);
+      res.status(500).json({ error: 'Failed to delete package' });
+    }
+  });
+
+  // Document upload routes
+  app.post('/api/packages/:id/documents', isAuthenticated, upload.single('file'), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { documentName, isRequired } = req.body;
+      const file = req.file;
+      const user = (req as any).dbUser;
+
+      if (!file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      const pkg = await storage.getPackage(parseInt(id));
+      if (!pkg) {
+        return res.status(404).json({ error: 'Package not found' });
+      }
+
+      // Move file to permanent location
+      const fileName = `${Date.now()}_${file.originalname}`;
+      const permanentPath = path.join(uploadDir, fileName);
+      fs.renameSync(file.path, permanentPath);
+
+      const documentData = {
+        packageId: parseInt(id),
+        documentName: documentName || file.originalname,
+        isRequired: parseInt(isRequired) || 0,
+        isCompleted: 1,
+        fileName: file.originalname,
+        fileSize: file.size,
+        filePath: permanentPath,
+        mimeType: file.mimetype,
+        uploadedAt: new Date(),
+      };
+
+      const document = await storage.createDocument(documentData);
+      res.json({ success: true, document });
+    } catch (error) {
+      console.error('Error uploading document:', error);
+      res.status(500).json({ error: 'Failed to upload document' });
     }
   });
 
@@ -929,603 +302,390 @@ Demolition Permit</textarea>
       const settings = await storage.getAllSettings();
       res.json(settings);
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch settings" });
+      console.error('Error fetching settings:', error);
+      res.status(500).json({ error: 'Failed to fetch settings' });
     }
   });
 
-  app.get('/api/settings/category/:category', isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const { category } = req.params;
-      const settings = await storage.getSettingsByCategory(category);
-      res.json(settings);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch settings" });
-    }
-  });
-
-  app.put('/api/settings/:id', isAuthenticated, isAdmin, async (req: any, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const validation = updateSettingSchema.safeParse(req.body);
-      if (!validation.success) {
-        return res.status(400).json({ 
-          message: "Invalid setting data", 
-          errors: validation.error.errors 
-        });
-      }
-
-      const updatedSetting = await storage.updateSetting(id, {
-        ...validation.data,
-        updatedBy: req.user.id,
-      });
-      
-      if (!updatedSetting) {
-        return res.status(404).json({ message: "Setting not found" });
-      }
-
-      res.json(updatedSetting);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update setting" });
-    }
-  });
-
-  // User management routes
-  app.get('/api/users', isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const users = await storage.getAllUsers();
-      res.json(users);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch users" });
-    }
-  });
-
-  app.get('/api/users/pending', isAuthenticated, isAdmin, async (req, res) => {
-    try {
-      const users = await storage.getAllUsers();
-      const pendingUsers = users.filter(user => user.approvalStatus === 'pending');
-      res.json(pendingUsers);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch pending users" });
-    }
-  });
-
-  app.post('/api/users/:id/approve', isAuthenticated, isAdmin, async (req: any, res) => {
-    try {
-      const { id } = req.params;
-      
-      const updatedUser = await storage.updateUser(id, {
-        approvalStatus: 'approved',
-        approvedBy: (req as any).user.id,
-        approvedAt: new Date(),
-        rejectionReason: null,
-      });
-      
-      if (!updatedUser) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      res.json(updatedUser);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to approve user" });
-    }
-  });
-
-  app.post('/api/users/:id/reject', isAuthenticated, isAdmin, async (req: any, res) => {
-    try {
-      const { id } = req.params;
-      const { reason } = req.body;
-      
-      const updatedUser = await storage.updateUser(id, {
-        approvalStatus: 'rejected',
-        approvedBy: (req as any).user.id,
-        approvedAt: new Date(),
-        rejectionReason: reason || 'No reason provided',
-      });
-      
-      if (!updatedUser) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      res.json(updatedUser);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to reject user" });
-    }
-  });
-
-  app.put('/api/users/:id', isAuthenticated, isAdmin, async (req, res) => {
+  app.put('/api/settings/:id', isAuthenticated, isAdmin, async (req, res) => {
     try {
       const { id } = req.params;
       const updates = req.body;
+      const user = (req as any).dbUser;
+
+      updates.updatedBy = user.id;
+
+      const updatedSetting = await storage.updateSetting(parseInt(id), updates);
       
-      const updatedUser = await storage.updateUser(id, updates);
-      if (!updatedUser) {
-        return res.status(404).json({ message: "User not found" });
+      if (!updatedSetting) {
+        return res.status(404).json({ error: 'Setting not found' });
       }
 
-      res.json(updatedUser);
+      res.json({ success: true, setting: updatedSetting });
     } catch (error) {
-      res.status(500).json({ message: "Failed to update user" });
-    }
-  });
-  
-  // Get all packages with statistics
-  app.get("/api/packages", isAuthenticated, async (req, res) => {
-    try {
-      const packages = await storage.getAllPackages();
-      const stats = await storage.getPackageStats();
-      
-      // Apply filters if provided
-      let filteredPackages = packages;
-      
-      const { status, permitType, search } = req.query;
-      
-      if (status && status !== 'all') {
-        filteredPackages = filteredPackages.filter(pkg => pkg.status === status);
-      }
-      
-      if (permitType && permitType !== 'all') {
-        filteredPackages = filteredPackages.filter(pkg => pkg.permitType === permitType);
-      }
-      
-      if (search) {
-        const searchTerm = (search as string).toLowerCase();
-        filteredPackages = filteredPackages.filter(pkg => 
-          pkg.projectName.toLowerCase().includes(searchTerm) ||
-          pkg.address.toLowerCase().includes(searchTerm) ||
-          pkg.clientName?.toLowerCase().includes(searchTerm)
-        );
-      }
-      
-      res.json({ packages: filteredPackages, stats });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch packages" });
+      console.error('Error updating setting:', error);
+      res.status(500).json({ error: 'Failed to update setting' });
     }
   });
 
-  // Get single package with documents
-  app.get("/api/packages/:id", isAuthenticated, async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid package ID" });
-      }
-
-      const packageWithDocuments = await storage.getPackageWithDocuments(id);
-      if (!packageWithDocuments) {
-        return res.status(404).json({ message: "Package not found" });
-      }
-
-      res.json(packageWithDocuments);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch package" });
-    }
-  });
-
-  // Create new package
-  app.post("/api/packages", isAuthenticated, async (req, res) => {
-    try {
-      const validation = insertPermitPackageSchema.safeParse(req.body);
-      if (!validation.success) {
-        return res.status(400).json({ 
-          message: "Invalid package data", 
-          errors: validation.error.errors 
-        });
-      }
-
-      const packageData = validation.data;
-      const newPackage = await storage.createPackage(packageData);
-
-      // Add default documents for building permits
-      if (packageData.permitType === "Building Permit") {
-        for (const docTemplate of DEFAULT_BUILDING_PERMIT_DOCS) {
-          await storage.createDocument({
-            packageId: newPackage.id,
-            documentName: docTemplate.documentName,
-            isRequired: docTemplate.isRequired,
-            isCompleted: 0,
-          });
-        }
-      }
-
-      const packageWithDocuments = await storage.getPackageWithDocuments(newPackage.id);
-      res.status(201).json(packageWithDocuments);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to create package" });
-    }
-  });
-
-  // Update package
-  app.patch("/api/packages/:id", isAuthenticated, async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid package ID" });
-      }
-
-      const validation = updatePermitPackageSchema.safeParse(req.body);
-      if (!validation.success) {
-        return res.status(400).json({ 
-          message: "Invalid update data", 
-          errors: validation.error.errors 
-        });
-      }
-
-      const updatedPackage = await storage.updatePackage(id, validation.data);
-      if (!updatedPackage) {
-        return res.status(404).json({ message: "Package not found" });
-      }
-
-      const packageWithDocuments = await storage.getPackageWithDocuments(id);
-      res.json(packageWithDocuments);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update package" });
-    }
-  });
-
-  // Delete package
-  app.delete("/api/packages/:id", isAuthenticated, async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid package ID" });
-      }
-
-      const deleted = await storage.deletePackage(id);
-      if (!deleted) {
-        return res.status(404).json({ message: "Package not found" });
-      }
-
-      res.status(204).send();
-    } catch (error) {
-      res.status(500).json({ message: "Failed to delete package" });
-    }
-  });
-
-  // Update document
-  app.patch("/api/documents/:id", isAuthenticated, async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      if (isNaN(id)) {
-        return res.status(400).json({ message: "Invalid document ID" });
-      }
-
-      const validation = updateDocumentSchema.safeParse(req.body);
-      if (!validation.success) {
-        return res.status(400).json({ 
-          message: "Invalid document data", 
-          errors: validation.error.errors 
-        });
-      }
-
-      const updatedDocument = await storage.updateDocument(id, validation.data);
-      if (!updatedDocument) {
-        return res.status(404).json({ message: "Document not found" });
-      }
-
-      res.json(updatedDocument);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update document" });
-    }
-  });
-
-  // Add document to package
-  app.post("/api/packages/:packageId/documents", isAuthenticated, async (req, res) => {
-    try {
-      const packageId = parseInt(req.params.packageId);
-      if (isNaN(packageId)) {
-        return res.status(400).json({ message: "Invalid package ID" });
-      }
-
-      // Check if package exists
-      const packageExists = await storage.getPackage(packageId);
-      if (!packageExists) {
-        return res.status(404).json({ message: "Package not found" });
-      }
-
-      const validation = insertDocumentSchema.safeParse({
-        ...req.body,
-        packageId
-      });
-      
-      if (!validation.success) {
-        return res.status(400).json({ 
-          message: "Invalid document data", 
-          errors: validation.error.errors 
-        });
-      }
-
-      const newDocument = await storage.createDocument(validation.data);
-      res.status(201).json(newDocument);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to add document" });
-    }
-  });
-
-  // Get package statistics
-  app.get("/api/stats", isAuthenticated, async (req, res) => {
+  // Statistics routes
+  app.get('/api/stats', isAuthenticated, async (req, res) => {
     try {
       const stats = await storage.getPackageStats();
       res.json(stats);
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch statistics" });
+      console.error('Error fetching stats:', error);
+      res.status(500).json({ error: 'Failed to fetch statistics' });
     }
   });
 
-  // Upload file to document
-  app.post("/api/documents/:id/upload", isAuthenticated, upload.single('file'), async (req, res) => {
-    try {
-      const documentId = parseInt(req.params.id);
-      if (isNaN(documentId)) {
-        return res.status(400).json({ message: "Invalid document ID" });
-      }
+  // Admin dashboard routes
+  app.get('/admin/users', isAuthenticated, isAdmin, (req, res) => {
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>User Management - Permit System</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: system-ui, sans-serif; background: #f8fafc; }
+          .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 2rem; }
+          .nav { background: white; border-bottom: 1px solid #e2e8f0; }
+          .nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 2rem; display: flex; gap: 2rem; }
+          .nav a { padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent; }
+          .nav a.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+          .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+          .users-table { background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
+          .table-header { padding: 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+          .btn { padding: 0.5rem 1rem; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; }
+          .btn:hover { background: #2563eb; }
+          .btn-danger { background: #dc2626; }
+          .btn-danger:hover { background: #b91c1c; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { text-align: left; padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; }
+          th { background: #f8fafc; font-weight: 600; color: #374151; }
+          .status-badge { padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
+          .status-active { background: #dcfce7; color: #166534; }
+          .status-inactive { background: #fef2f2; color: #991b1b; }
+          .role-badge { padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500; }
+          .role-admin { background: #fef3c7; color: #92400e; }
+          .role-user { background: #e0e7ff; color: #3730a3; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Permit Management System</h1>
+        </div>
+        
+        <nav class="nav">
+          <div class="nav-inner">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/admin/users" class="active">User Management</a>
+            <a href="/admin/packages">Package Management</a>
+            <a href="/admin/settings">Settings</a>
+            <a href="#" onclick="logout()">Logout</a>
+          </div>
+        </nav>
+        
+        <div class="container">
+          <div class="users-table">
+            <div class="table-header">
+              <h2>User Management</h2>
+              <button class="btn" onclick="showCreateUserModal()">Add New User</button>
+            </div>
+            
+            <table id="usersTable">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Company</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td colspan="7" style="text-align: center; padding: 2rem;">Loading users...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-      if (!req.file) {
-        return res.status(400).json({ message: "No file uploaded" });
-      }
+        <!-- Create User Modal -->
+        <div id="createUserModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000;">
+          <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 2rem; border-radius: 8px; width: 90%; max-width: 500px;">
+            <h3>Create New User</h3>
+            <form id="createUserForm" style="margin-top: 1rem;">
+              <div style="margin-bottom: 1rem;">
+                <label>Email:</label>
+                <input type="email" name="email" required style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px;">
+              </div>
+              <div style="margin-bottom: 1rem;">
+                <label>Password:</label>
+                <input type="password" name="password" required style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px;">
+              </div>
+              <div style="margin-bottom: 1rem;">
+                <label>First Name:</label>
+                <input type="text" name="firstName" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px;">
+              </div>
+              <div style="margin-bottom: 1rem;">
+                <label>Last Name:</label>
+                <input type="text" name="lastName" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px;">
+              </div>
+              <div style="margin-bottom: 1rem;">
+                <label>Role:</label>
+                <select name="role" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px;">
+                  <option value="user">User</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div style="margin-bottom: 1rem;">
+                <label>Company:</label>
+                <input type="text" name="company" style="width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px;">
+              </div>
+              <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                <button type="button" onclick="hideCreateUserModal()" class="btn" style="background: #6b7280;">Cancel</button>
+                <button type="submit" class="btn">Create User</button>
+              </div>
+            </form>
+          </div>
+        </div>
 
-      const updatedDocument = await storage.updateDocument(documentId, {
-        fileName: req.file.originalname,
-        fileSize: req.file.size,
-        filePath: req.file.path,
-        mimeType: req.file.mimetype,
-        isCompleted: 1, // Mark as completed when file is uploaded
-      });
+        <script>
+          let users = [];
 
-      if (!updatedDocument) {
-        // Clean up uploaded file if document not found
-        fs.unlinkSync(req.file.path);
-        return res.status(404).json({ message: "Document not found" });
-      }
+          async function loadUsers() {
+            try {
+              const response = await fetch('/api/admin/users');
+              users = await response.json();
+              renderUsers();
+            } catch (error) {
+              console.error('Error loading users:', error);
+            }
+          }
 
-      res.json(updatedDocument);
-    } catch (error) {
-      // Clean up uploaded file on error
-      if (req.file) {
-        fs.unlinkSync(req.file.path);
-      }
-      res.status(500).json({ message: "Failed to upload file" });
-    }
+          function renderUsers() {
+            const tbody = document.querySelector('#usersTable tbody');
+            tbody.innerHTML = users.map(user => \`
+              <tr>
+                <td>\${user.firstName || ''} \${user.lastName || ''}</td>
+                <td>\${user.email}</td>
+                <td><span class="role-badge role-\${user.role}">\${user.role}</span></td>
+                <td><span class="status-badge status-\${user.isActive ? 'active' : 'inactive'}">\${user.isActive ? 'Active' : 'Inactive'}</span></td>
+                <td>\${user.company || '-'}</td>
+                <td>\${new Date(user.createdAt).toLocaleDateString()}</td>
+                <td>
+                  <button class="btn" onclick="resetPassword('\${user.id}')" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">Reset Password</button>
+                  <button class="btn-danger btn" onclick="toggleUserStatus('\${user.id}', \${user.isActive})" style="font-size: 0.75rem; padding: 0.25rem 0.5rem; margin-left: 0.5rem;">
+                    \${user.isActive ? 'Deactivate' : 'Activate'}
+                  </button>
+                </td>
+              </tr>
+            \`).join('');
+          }
+
+          function showCreateUserModal() {
+            document.getElementById('createUserModal').style.display = 'block';
+          }
+
+          function hideCreateUserModal() {
+            document.getElementById('createUserModal').style.display = 'none';
+            document.getElementById('createUserForm').reset();
+          }
+
+          document.getElementById('createUserForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const userData = Object.fromEntries(formData);
+
+            try {
+              const response = await fetch('/api/admin/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(userData)
+              });
+
+              const result = await response.json();
+              
+              if (result.success) {
+                hideCreateUserModal();
+                loadUsers();
+                alert('User created successfully');
+              } else {
+                alert(result.error || 'Failed to create user');
+              }
+            } catch (error) {
+              alert('Error creating user');
+            }
+          });
+
+          async function resetPassword(userId) {
+            if (!confirm('Reset password for this user?')) return;
+
+            try {
+              const response = await fetch(\`/api/admin/users/\${userId}/reset-password\`, {
+                method: 'POST'
+              });
+
+              const result = await response.json();
+              
+              if (result.success) {
+                alert(\`Password reset successfully. New password: \${result.newPassword}\`);
+              } else {
+                alert('Failed to reset password');
+              }
+            } catch (error) {
+              alert('Error resetting password');
+            }
+          }
+
+          async function toggleUserStatus(userId, isActive) {
+            const action = isActive ? 'deactivate' : 'activate';
+            if (!confirm(\`\${action.charAt(0).toUpperCase() + action.slice(1)} this user?\`)) return;
+
+            try {
+              const response = await fetch(\`/api/admin/users/\${userId}\`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isActive: !isActive })
+              });
+
+              const result = await response.json();
+              
+              if (result.success) {
+                loadUsers();
+                alert(\`User \${action}d successfully\`);
+              } else {
+                alert(\`Failed to \${action} user\`);
+              }
+            } catch (error) {
+              alert(\`Error \${action}ing user\`);
+            }
+          }
+
+          async function logout() {
+            try {
+              await fetch('/auth/logout', { method: 'POST' });
+              window.location.href = '/login';
+            } catch (error) {
+              window.location.href = '/login';
+            }
+          }
+
+          // Load users on page load
+          loadUsers();
+        </script>
+      </body>
+      </html>
+    `);
   });
 
-  // Download/view file
-  app.get("/api/documents/:id/download", isAuthenticated, async (req, res) => {
-    try {
-      const documentId = parseInt(req.params.id);
-      if (isNaN(documentId)) {
-        return res.status(400).json({ message: "Invalid document ID" });
-      }
+  app.get('/dashboard', isAuthenticated, (req, res) => {
+    const user = (req as any).dbUser;
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Dashboard - Permit Management System</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: system-ui, sans-serif; background: #f8fafc; }
+          .header { background: white; border-bottom: 1px solid #e2e8f0; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+          .nav { background: white; border-bottom: 1px solid #e2e8f0; }
+          .nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 2rem; display: flex; gap: 2rem; }
+          .nav a { padding: 1rem 0; color: #64748b; text-decoration: none; border-bottom: 2px solid transparent; }
+          .nav a.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+          .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+          .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+          .stat-card { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+          .stat-number { font-size: 2rem; font-weight: bold; color: #1f2937; }
+          .stat-label { color: #6b7280; margin-top: 0.5rem; }
+          .welcome { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+          .btn { padding: 0.5rem 1rem; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer; text-decoration: none; display: inline-block; }
+          .btn:hover { background: #2563eb; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Permit Management System</h1>
+          <div>
+            Welcome, ${user.firstName || user.email} 
+            <button class="btn" onclick="logout()" style="margin-left: 1rem;">Logout</button>
+          </div>
+        </div>
+        
+        <nav class="nav">
+          <div class="nav-inner">
+            <a href="/dashboard" class="active">Dashboard</a>
+            ${user.role === 'admin' ? '<a href="/admin/users">User Management</a>' : ''}
+            ${user.role === 'admin' ? '<a href="/admin/packages">Package Management</a>' : ''}
+            ${user.role === 'admin' ? '<a href="/admin/settings">Settings</a>' : ''}
+          </div>
+        </nav>
+        
+        <div class="container">
+          <div class="welcome">
+            <h2>Welcome to the Permit Management System</h2>
+            <p>Manage building permits, track document completion, and streamline the approval process.</p>
+            <p><strong>Database:</strong> PostgreSQL | <strong>Authentication:</strong> Local + GitHub OAuth | <strong>Server:</strong> Apache + Bun</p>
+          </div>
+          
+          <div class="stats-grid" id="statsGrid">
+            <div class="stat-card">
+              <div class="stat-number">Loading...</div>
+              <div class="stat-label">Loading statistics...</div>
+            </div>
+          </div>
+        </div>
 
-      const document = await storage.getDocument(documentId);
-      if (!document || !document.filePath) {
-        return res.status(404).json({ message: "File not found" });
-      }
+        <script>
+          async function loadStats() {
+            try {
+              const response = await fetch('/api/stats');
+              const stats = await response.json();
+              
+              document.getElementById('statsGrid').innerHTML = \`
+                <div class="stat-card">
+                  <div class="stat-number">\${stats.total}</div>
+                  <div class="stat-label">Total Packages</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-number">\${stats.draft}</div>
+                  <div class="stat-label">Draft Packages</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-number">\${stats.inProgress}</div>
+                  <div class="stat-label">In Progress</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-number">\${stats.submitted}</div>
+                  <div class="stat-label">Submitted</div>
+                </div>
+              \`;
+            } catch (error) {
+              console.error('Error loading stats:', error);
+            }
+          }
 
-      // Check if file exists on disk
-      if (!fs.existsSync(document.filePath)) {
-        return res.status(404).json({ message: "File not found on disk" });
-      }
+          async function logout() {
+            try {
+              await fetch('/auth/logout', { method: 'POST' });
+              window.location.href = '/login';
+            } catch (error) {
+              window.location.href = '/login';
+            }
+          }
 
-      // Set appropriate headers
-      res.setHeader('Content-Disposition', `attachment; filename="${document.fileName}"`);
-      res.setHeader('Content-Type', document.mimeType || 'application/octet-stream');
-      
-      // Stream the file
-      const fileStream = fs.createReadStream(document.filePath);
-      fileStream.pipe(res);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to download file" });
-    }
+          loadStats();
+        </script>
+      </body>
+      </html>
+    `);
   });
-
-  // Delete uploaded file
-  app.delete("/api/documents/:id/file", isAuthenticated, async (req, res) => {
-    try {
-      const documentId = parseInt(req.params.id);
-      if (isNaN(documentId)) {
-        return res.status(400).json({ message: "Invalid document ID" });
-      }
-
-      const document = await storage.getDocument(documentId);
-      if (!document) {
-        return res.status(404).json({ message: "Document not found" });
-      }
-
-      // Delete file from disk if it exists
-      if (document.filePath && fs.existsSync(document.filePath)) {
-        fs.unlinkSync(document.filePath);
-      }
-
-      // Update document to remove file info
-      const updatedDocument = await storage.updateDocument(documentId, {
-        fileName: null,
-        fileSize: null,
-        filePath: null,
-        mimeType: null,
-        isCompleted: 0, // Mark as incomplete when file is removed
-      });
-
-      res.json(updatedDocument);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to delete file" });
-    }
-  });
-
-  // Health monitoring endpoints
-  app.get('/api/health', async (req, res) => {
-    try {
-      const health = await healthMonitor.checkHealth();
-      const status = healthMonitor.isHealthy() ? 200 : 503;
-      res.status(status).json(health);
-    } catch (error) {
-      res.status(503).json({
-        database: { connected: false, responseTime: 0, error: 'Health check failed' },
-        storage: { uploadsWritable: false, backupsWritable: false, diskSpace: { total: 0, free: 0, used: 0, percentage: 0 } },
-        system: { uptime: process.uptime(), memory: { used: 0, total: 0, percentage: 0 } },
-        lastCheck: new Date(),
-      });
-    }
-  });
-
-  // Network file sharing endpoints
-  app.get('/api/network/share/:packageId', async (req, res) => {
-    try {
-      const packageId = parseInt(req.params.packageId);
-      if (isNaN(packageId)) {
-        return res.status(400).json({ message: "Invalid package ID" });
-      }
-
-      const packageWithDocuments = await storage.getPackageWithDocuments(packageId);
-      if (!packageWithDocuments) {
-        return res.status(404).json({ message: "Package not found" });
-      }
-
-      // Create shareable package info with file URLs
-      const shareablePackage = {
-        ...packageWithDocuments,
-        documents: packageWithDocuments.documents.map(doc => ({
-          ...doc,
-          fileUrl: doc.fileName ? `/api/files/${doc.fileName}` : null
-        })),
-        shareUrl: `${req.protocol}://${req.get('host')}/api/network/share/${packageId}`,
-        accessTime: new Date().toISOString()
-      };
-
-      res.json(shareablePackage);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to create network share" });
-    }
-  });
-
-  // List all shared packages for network discovery
-  app.get('/api/network/packages', async (req, res) => {
-    try {
-      const packages = await storage.getAllPackages();
-      const networkPackages = packages.map(pkg => ({
-        id: pkg.id,
-        projectName: pkg.projectName,
-        status: pkg.status,
-        permitType: pkg.permitType,
-        totalDocuments: pkg.totalDocuments,
-        completedDocuments: pkg.completedDocuments,
-        progressPercentage: pkg.progressPercentage,
-        shareUrl: `${req.protocol}://${req.get('host')}/api/network/share/${pkg.id}`,
-        lastUpdated: pkg.updatedAt
-      }));
-
-      res.json({
-        packages: networkPackages,
-        serverInfo: {
-          host: req.get('host'),
-          timestamp: new Date().toISOString(),
-          totalPackages: packages.length
-        }
-      });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to list network packages" });
-    }
-  });
-
-  // Bulk download endpoint for network sharing
-  app.get('/api/network/download/:packageId', async (req, res) => {
-    try {
-      const packageId = parseInt(req.params.packageId);
-      if (isNaN(packageId)) {
-        return res.status(400).json({ message: "Invalid package ID" });
-      }
-
-      const packageWithDocuments = await storage.getPackageWithDocuments(packageId);
-      if (!packageWithDocuments) {
-        return res.status(404).json({ message: "Package not found" });
-      }
-
-      // Create a simple JSON response with all file information
-      const downloadPackage = {
-        package: packageWithDocuments,
-        files: packageWithDocuments.documents
-          .filter(doc => doc.fileName)
-          .map(doc => ({
-            documentName: doc.documentName,
-            fileName: doc.fileName,
-            fileSize: doc.fileSize,
-            downloadUrl: `${req.protocol}://${req.get('host')}/api/files/${doc.fileName}`,
-            mimeType: doc.mimeType
-          })),
-        downloadInfo: {
-          packageName: packageWithDocuments.projectName,
-          totalFiles: packageWithDocuments.documents.filter(doc => doc.fileName).length,
-          generatedAt: new Date().toISOString()
-        }
-      };
-
-      res.setHeader('Content-Type', 'application/json');
-      res.setHeader('Content-Disposition', `attachment; filename="package-${packageId}-files.json"`);
-      res.json(downloadPackage);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to create download package" });
-    }
-  });
-
-  // System status endpoint
-  app.get('/api/system/status', async (req, res) => {
-    try {
-      const health = await healthMonitor.checkHealth();
-      const systemInfo = {
-        ...health,
-        config: {
-          environment: config.server.environment,
-          databaseHost: config.database.host,
-          uploadsDirectory: config.uploads.directory,
-          backupDirectory: config.backup.directory,
-          maxFileSize: config.uploads.maxFileSize,
-          autoBackup: config.backup.autoBackup,
-        },
-        version: process.env.npm_package_version || '1.0.0',
-        nodeVersion: process.version,
-      };
-      res.json(systemInfo);
-    } catch (error) {
-      res.status(500).json({ message: 'Failed to get system status' });
-    }
-  });
-
-  // Database backup endpoint (admin only)
-  app.post('/api/system/backup', isAdmin, async (req, res) => {
-    try {
-      const { execSync } = require('child_process');
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const backupFile = path.join(config.backup.directory, `permits_backup_${timestamp}.sql`);
-      
-      // Ensure backup directory exists
-      if (!fs.existsSync(config.backup.directory)) {
-        fs.mkdirSync(config.backup.directory, { recursive: true });
-      }
-
-      const dbUrl = new URL(config.database.url);
-      const env = { ...process.env, PGPASSWORD: dbUrl.password };
-
-      execSync(`pg_dump -h ${dbUrl.hostname} -p ${dbUrl.port || 5432} -U ${dbUrl.username} -d ${dbUrl.pathname.slice(1)} -f ${backupFile}`, {
-        env,
-        stdio: 'pipe'
-      });
-
-      const stats = fs.statSync(backupFile);
-      res.json({
-        success: true,
-        backupFile,
-        size: stats.size,
-        timestamp: new Date(),
-      });
-    } catch (error) {
-      res.status(500).json({ 
-        success: false, 
-        message: 'Backup failed',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  });
-
-  // Serve uploaded files statically
-  app.use('/uploads', express.static(uploadsDir));
 
   const httpServer = createServer(app);
   return httpServer;
