@@ -153,7 +153,8 @@ Role-based access control:
 4. Static assets copied to distribution folder
 
 ## Changelog
-- June 23, 2025. Initial setup
+- June 24, 2025: Production deployment working - server starts on port 3001 with SQLite authentication
+- June 23, 2025: Initial setup and development environment configured
 
 ## User Preferences
 
