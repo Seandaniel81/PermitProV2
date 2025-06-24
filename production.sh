@@ -1,12 +1,10 @@
 #!/bin/bash
 
-# Final working production script
-echo "Starting production server..."
+echo "=== Starting Production Server ==="
 
-# Kill any existing processes
+# Stop development server
 pkill -f "tsx server/index.ts" || true
-pkill -f "node dist/index.js" || true
-sleep 2
+sleep 1
 
 # Build application
 npm run build
@@ -24,10 +22,11 @@ export NODE_ENV=production
 export PORT=3001
 export DATABASE_URL=file:./permit_system.db
 export FORCE_LOCAL_AUTH=true
-export SESSION_SECRET=production_$(date +%s)_$(openssl rand -hex 8)
+export SESSION_SECRET=$(openssl rand -hex 32)
 
-echo "Production server starting on port 3001..."
+echo "Production server running on port 3001"
 echo "Login: admin@localhost / admin123"
 echo "Access: http://localhost:3001"
+echo ""
 
 exec node dist/index.js
