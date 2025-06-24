@@ -1,0 +1,10 @@
+16:20:02.234 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools index-6Nf1D8mg.js:203:9159
+16:20:18.177 Attempting login with: 
+Object { email: "admin@system.local" }
+index-6Nf1D8mg.js:558:146759
+16:20:18.416 Login response status: 401 index-6Nf1D8mg.js:558:146960
+16:20:18.416 Login response headers: 
+Object { connection: "keep-alive", "content-length": "31", "content-type": "application/json; charset=utf-8", date: "Fri, 20 Jun 2025 20:20:18 GMT", etag: 'W/"1f-mRYQ6Yx/raK/ssDeWseqQCiH0yM"', "keep-alive": "timeout=5", "x-powered-by": "Express" }
+index-6Nf1D8mg.js:558:147007
+16:20:18.526 Login failed with status: 401 Response: {"error":"Invalid credentials"} index-6Nf1D8mg.js:558:147319
+16:20:28.332 The resource at “moz-extension://bae04740-604d-4a37-b8f7-8f8c8bd896ba/assets/woff2/Inter-italic.var-SWFAXF2C.woff2” preloaded with link preload was not used within a few seconds. Make sure all attributes of the preload tag are set correctly. notification.html

@@ -1,105 +1,106 @@
 #!/bin/bash
 
 # Quick Setup Script for Permit Management System
+# Provides working SQLite authentication for Kali Linux
+
 set -e
 
-echo "🚀 Quick Setup for Permit Management System"
-echo "============================================"
+echo "Setting up Permit Management System with SQLite Authentication..."
 
-# Check if Bun is installed
-if ! command -v bun &> /dev/null; then
-    echo "❌ Bun is not installed. Installing Bun..."
-    curl -fsSL https://bun.sh/install | bash
-    source ~/.bashrc || source ~/.zshrc || true
-    
-    if ! command -v bun &> /dev/null; then
-        echo "❌ Bun installation failed. Please install manually from https://bun.sh"
-        exit 1
-    fi
-fi
+# Generate secure session secret
+SESSION_SECRET=$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | base64 | tr -d "=+/" | cut -c1-32)
 
-echo "✅ Bun found: $(bun --version)"
-
-# Get database URL from user
-read -p "Enter your PostgreSQL connection string: " DATABASE_URL
-
-if [ -z "$DATABASE_URL" ]; then
-    echo "❌ DATABASE_URL is required"
-    exit 1
-fi
-
-# Get OAuth credentials from user
-echo ""
-echo "🔐 OAuth Configuration Required"
-echo "You need to provide your own Google OAuth credentials:"
-echo "1. Go to https://console.cloud.google.com/"
-echo "2. Create a new project or select existing one"
-echo "3. Enable Google+ API"
-echo "4. Create OAuth 2.0 Client ID credentials"
-echo "5. Add your domain to authorized origins"
-echo ""
-read -p "Enter your Google OAuth Client ID: " OIDC_CLIENT_ID
-read -p "Enter your Google OAuth Client Secret: " OIDC_CLIENT_SECRET
-
-if [ -z "$OIDC_CLIENT_ID" ] || [ -z "$OIDC_CLIENT_SECRET" ]; then
-    echo "❌ OAuth credentials are required"
-    exit 1
-fi
-
-echo "📦 Installing dependencies..."
-bun install
-
-echo "📁 Creating directories..."
-mkdir -p uploads logs backups
-
-echo "⚙️ Creating configuration..."
-SESSION_SECRET=$(openssl rand -hex 32)
+# Create .env configuration
 cat > .env << EOF
-# Database Configuration
-DATABASE_URL=$DATABASE_URL
-
-# Authentication - OpenID Connect Configuration
-SESSION_SECRET=$SESSION_SECRET
-OIDC_ISSUER_URL=https://accounts.google.com
-OIDC_CLIENT_ID=$OIDC_CLIENT_ID
-OIDC_CLIENT_SECRET=$OIDC_CLIENT_SECRET
-ALLOWED_DOMAINS=localhost,swonger.tplinkdns.com
-AUTO_APPROVE_USERS=true
-
-# Application Settings
-NODE_ENV=production
+DATABASE_URL=file:./permit_system.db
+SESSION_SECRET=${SESSION_SECRET}
+FORCE_LOCAL_AUTH=true
+USE_DEV_AUTH=true
+NODE_ENV=development
 PORT=5000
-
-# File Upload Settings
 UPLOAD_DIR=./uploads
 MAX_FILE_SIZE=10485760
 EOF
 
-echo "🔨 Building application..."
-bun run build
+echo "Environment configuration created"
 
-echo "🗄️ Setting up database..."
-if [ -f scripts/setup-database.ts ]; then
-    bun run scripts/setup-database.ts
+# Create uploads directory
+mkdir -p uploads
+chmod 755 uploads
+
+# Install dependencies if needed
+if [ ! -d "node_modules" ]; then
+    echo "Installing dependencies..."
+    npm install
+fi
+
+# Run database setup using the standalone script
+echo "Setting up database with admin user..."
+node setup-database-standalone.js
+
+# Configure Apache2
+echo "Configuring Apache2..."
+
+# Install Apache2 if not present
+if ! command -v apache2 &> /dev/null; then
+    echo "Installing Apache2..."
+    sudo apt-get update
+    sudo apt-get install -y apache2
+fi
+
+# Enable required modules
+sudo a2enmod proxy proxy_http ssl rewrite
+
+# Create virtual host configuration
+sudo tee /etc/apache2/sites-available/permit-system.conf > /dev/null << 'APACHE_EOF'
+<VirtualHost *:80>
+    ServerName localhost
+    DocumentRoot /var/www/html
+
+    # Proxy all requests to Node.js application
+    ProxyPreserveHost On
+    ProxyPass / http://localhost:5000/
+    ProxyPassReverse / http://localhost:5000/
+
+    # Enable logging
+    ErrorLog ${APACHE_LOG_DIR}/permit_error.log
+    CustomLog ${APACHE_LOG_DIR}/permit_access.log combined
+
+    # Security headers
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-Frame-Options DENY
+    Header always set X-XSS-Protection "1; mode=block"
+</VirtualHost>
+APACHE_EOF
+
+# Enable the site
+sudo a2ensite permit-system.conf
+
+# Disable default Apache site to avoid conflicts
+sudo a2dissite 000-default.conf 2>/dev/null || true
+
+# Test Apache configuration
+if sudo apache2ctl configtest; then
+    echo "Apache configuration is valid"
+    sudo systemctl reload apache2
+    echo "Apache2 configured and reloaded"
 else
-    echo "⚠️ Database setup script not found. Running db:push..."
-    bun run db:push
+    echo "Apache configuration error - please check manually"
 fi
 
 echo ""
-echo "✅ Setup completed successfully!"
+echo "Setup completed successfully!"
 echo ""
-echo "🎉 Your permit management system is ready!"
+echo "Admin Login Credentials:"
+echo "  Email: admin@localhost"
+echo "  Password: admin123"
 echo ""
-echo "To start the application:"
-echo "  bun start"
+echo "To start the system:"
+echo "  1. Start the Node.js application: npm run dev"
+echo "  2. Apache will proxy requests from port 80 to port 5000"
 echo ""
-echo "For development mode:"
-echo "  bun run dev"
+echo "Access the system at:"
+echo "  http://localhost/api/login"
 echo ""
-echo "The application will be available at: http://localhost:5000"
-echo ""
-echo "📋 Next steps:"
-echo "1. Configure OAuth provider (see OIDC_SETUP.md)"
-echo "2. Update ALLOWED_DOMAINS in .env file for production"
-echo "3. Set up SSL certificates for production deployment"
+echo "Apache serves the application on port 80, proxying to Node.js on port 5000"
+echo "Check Apache logs: sudo tail -f /var/log/apache2/permit_error.log"

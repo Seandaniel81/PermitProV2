@@ -1,38 +1,46 @@
-import { 
-  PermitPackage, 
-  InsertPermitPackage, 
-  UpdatePermitPackage,
-  PackageDocument, 
-  InsertDocument, 
-  UpdateDocument,
-  PackageWithDocuments,
-  User,
-  UpsertUser,
-  Setting,
-  InsertSetting,
-  UpdateSetting,
-  PACKAGE_STATUSES,
-  DEFAULT_BUILDING_PERMIT_DOCS
-} from "@shared/schema";
+import {
+  users,
+  settings,
+  permitPackages,
+  packageDocuments,
+  type User,
+  type UpsertUser,
+  type InsertUser,
+  type UpdateUser,
+  type Setting,
+  type InsertSetting,
+  type UpdateSetting,
+  type PermitPackage,
+  type InsertPermitPackage,
+  type UpdatePermitPackage,
+  type PackageDocument,
+  type InsertDocument,
+  type UpdateDocument,
+  type PackageWithDocuments,
+  DEFAULT_SETTINGS,
+} from "../shared/schema";
+import { db } from "./db";
+import { eq, and, desc, count, sql } from "drizzle-orm";
 
+// Interface for storage operations
 export interface IStorage {
-  // User methods
+  // User operations
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
   updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
   updateUserPassword(id: string, hashedPassword: string): Promise<User | undefined>;
-  resetUserPassword(id: string): Promise<string>; // Returns temporary password
+  resetUserPassword(id: string): Promise<string>;
   
-  // Settings methods
+  // Settings operations
   getSetting(key: string): Promise<Setting | undefined>;
   getAllSettings(): Promise<Setting[]>;
   getSettingsByCategory(category: string): Promise<Setting[]>;
-  upsertSetting(setting: InsertSetting): Promise<Setting>;
+  upsertSetting(settingData: InsertSetting): Promise<Setting>;
   updateSetting(id: number, updates: UpdateSetting): Promise<Setting | undefined>;
   
-  // Package methods
+  // Package operations
   getPackage(id: number): Promise<PermitPackage | undefined>;
   getPackageWithDocuments(id: number): Promise<PackageWithDocuments | undefined>;
   getAllPackages(): Promise<PackageWithDocuments[]>;
@@ -40,14 +48,14 @@ export interface IStorage {
   updatePackage(id: number, updates: UpdatePermitPackage): Promise<PermitPackage | undefined>;
   deletePackage(id: number): Promise<boolean>;
   
-  // Document methods
+  // Document operations
   getPackageDocuments(packageId: number): Promise<PackageDocument[]>;
   getDocument(id: number): Promise<PackageDocument | undefined>;
   createDocument(documentData: InsertDocument): Promise<PackageDocument>;
   updateDocument(id: number, updates: UpdateDocument): Promise<PackageDocument | undefined>;
   deleteDocument(id: number): Promise<boolean>;
   
-  // Stats methods
+  // Statistics
   getPackageStats(): Promise<{
     total: number;
     draft: number;
@@ -57,181 +65,114 @@ export interface IStorage {
   }>;
 }
 
-export class MemStorage implements IStorage {
-  private packages: Map<number, PermitPackage>;
-  private documents: Map<number, PackageDocument>;
-  private users: Map<string, User>;
-  private settings: Map<string, Setting>;
-  private currentPackageId: number;
-  private currentDocumentId: number;
-
-  constructor() {
-    this.packages = new Map();
-    this.documents = new Map();
-    this.users = new Map();
-    this.settings = new Map();
-    this.currentPackageId = 1;
-    this.currentDocumentId = 1;
-    
-    // Initialize with some sample data
-    this.initializeSampleData();
+export class DatabaseStorage implements IStorage {
+  // User operations
+  async getUser(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
-  // User management methods (stub implementations)
-  async getUser(id: string): Promise<User | undefined> { return undefined; }
-  async getUserByEmail(email: string): Promise<User | undefined> { return undefined; }
-  async upsertUser(userData: UpsertUser): Promise<User> { 
-    return { 
-      id: '1', 
-      email: userData.email || '', 
-      passwordHash: userData.passwordHash || '',
-      firstName: userData.firstName || '', 
-      lastName: userData.lastName || '', 
-      profileImageUrl: userData.profileImageUrl || null,
-      role: userData.role || 'user', 
-      isActive: userData.isActive || true, 
-      approvalStatus: userData.approvalStatus || 'approved',
-      approvedBy: userData.approvedBy || null,
-      approvedAt: userData.approvedAt || null,
-      rejectionReason: userData.rejectionReason || null,
-      company: userData.company || null,
-      phone: userData.phone || null,
-      lastLoginAt: userData.lastLoginAt || null,
-      createdAt: new Date(), 
-      updatedAt: new Date() 
-    }; 
-  }
-  async getAllUsers(): Promise<User[]> { return []; }
-  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> { return undefined; }
-  async updateUserPassword(id: string, hashedPassword: string): Promise<User | undefined> { return undefined; }
-  async resetUserPassword(id: string): Promise<string> { return "temp-password"; }
-
-  // Settings methods (stub implementations)
-  async getSetting(key: string): Promise<Setting | undefined> { return undefined; }
-  async getAllSettings(): Promise<Setting[]> { return []; }
-  async getSettingsByCategory(category: string): Promise<Setting[]> { return []; }
-  async upsertSetting(settingData: InsertSetting): Promise<Setting> { 
-    return { id: 1, key: settingData.key, value: settingData.value, description: '', category: 'general', isSystem: false, updatedBy: '', updatedAt: new Date() }; 
-  }
-  async updateSetting(id: number, updates: UpdateSetting): Promise<Setting | undefined> { return undefined; }
-
-  private initializeSampleData() {
-    // Create sample packages
-    const samplePackages = [
-      {
-        projectName: "Downtown Office Complex - Phase 1",
-        address: "123 Main Street, Downtown",
-        permitType: "Building Permit",
-        status: "in_progress",
-        description: "New construction of 5-story office building",
-        clientName: "ABC Development Corp",
-        clientEmail: "contact@abcdev.com",
-        clientPhone: "(555) 123-4567",
-        estimatedValue: 250000000, // $2.5M in cents
-      },
-      {
-        projectName: "Residential Renovation - Smith Property",
-        address: "456 Oak Avenue, Suburb",
-        permitType: "Building Permit", 
-        status: "ready_to_submit",
-        description: "Kitchen and bathroom renovation",
-        clientName: "John Smith",
-        clientEmail: "john.smith@email.com",
-        clientPhone: "(555) 987-6543",
-        estimatedValue: 7500000, // $75K in cents
-      },
-      {
-        projectName: "Industrial Warehouse Expansion",
-        address: "789 Industrial Blvd, Industrial District",
-        permitType: "Building Permit",
-        status: "draft",
-        description: "Warehouse expansion and loading dock addition",
-        clientName: "Industrial Solutions LLC",
-        clientEmail: "permits@industrialsolutions.com",
-        clientPhone: "(555) 456-7890",
-        estimatedValue: 150000000, // $1.5M in cents
-      }
-    ];
-
-    samplePackages.forEach(packageData => {
-      const pkg = this.createPackageSync(packageData);
-      
-      // Add default documents for building permits
-      if (packageData.permitType === "Building Permit") {
-        DEFAULT_BUILDING_PERMIT_DOCS.forEach((docTemplate, index) => {
-          const completedCount = packageData.status === "ready_to_submit" ? 
-            DEFAULT_BUILDING_PERMIT_DOCS.length : 
-            packageData.status === "in_progress" ? 
-              Math.floor(DEFAULT_BUILDING_PERMIT_DOCS.length / 2) : 
-              2;
-          
-          this.createDocumentSync({
-            packageId: pkg.id,
-            documentName: docTemplate.documentName,
-            isRequired: docTemplate.isRequired,
-            isCompleted: index < completedCount ? 1 : 0,
-          });
-        });
-      }
-    });
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
   }
 
-  private createPackageSync(packageData: InsertPermitPackage): PermitPackage {
-    const id = this.currentPackageId++;
-    const now = new Date();
-    const pkg: PermitPackage = {
-      id,
-      projectName: packageData.projectName,
-      address: packageData.address,
-      permitType: packageData.permitType,
-      status: packageData.status || 'draft',
-      description: packageData.description || null,
-      clientName: packageData.clientName || null,
-      clientEmail: packageData.clientEmail || null,
-      clientPhone: packageData.clientPhone || null,
-      estimatedValue: packageData.estimatedValue || null,
-      createdBy: packageData.createdBy || null,
-      assignedTo: packageData.assignedTo || null,
-      createdAt: now,
-      updatedAt: now,
-      submittedAt: packageData.status === PACKAGE_STATUSES.SUBMITTED ? now : null,
-    };
-    this.packages.set(id, pkg);
+  async upsertUser(userData: UpsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(userData)
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          ...userData,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return user;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return user;
+  }
+
+  async updateUserPassword(id: string, hashedPassword: string): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set({ passwordHash: hashedPassword, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return user;
+  }
+
+  async resetUserPassword(id: string): Promise<string> {
+    const newPassword = Math.random().toString(36).slice(-8);
+    const bcrypt = await import('bcrypt');
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await this.updateUserPassword(id, hashedPassword);
+    return newPassword;
+  }
+
+  // Settings operations
+  async getSetting(key: string): Promise<Setting | undefined> {
+    const [setting] = await db.select().from(settings).where(eq(settings.key, key));
+    return setting;
+  }
+
+  async getAllSettings(): Promise<Setting[]> {
+    return await db.select().from(settings).orderBy(settings.category, settings.key);
+  }
+
+  async getSettingsByCategory(category: string): Promise<Setting[]> {
+    return await db.select().from(settings).where(eq(settings.category, category));
+  }
+
+  async upsertSetting(settingData: InsertSetting): Promise<Setting> {
+    const [setting] = await db
+      .insert(settings)
+      .values(settingData)
+      .onConflictDoUpdate({
+        target: settings.key,
+        set: {
+          ...settingData,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return setting;
+  }
+
+  async updateSetting(id: number, updates: UpdateSetting): Promise<Setting | undefined> {
+    const [setting] = await db
+      .update(settings)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(settings.id, id))
+      .returning();
+    return setting;
+  }
+
+  // Package operations
+  async getPackage(id: number): Promise<PermitPackage | undefined> {
+    const [pkg] = await db.select().from(permitPackages).where(eq(permitPackages.id, id));
     return pkg;
   }
 
-  private createDocumentSync(documentData: InsertDocument): PackageDocument {
-    const id = this.currentDocumentId++;
-    const doc: PackageDocument = {
-      id,
-      packageId: documentData.packageId,
-      documentName: documentData.documentName,
-      isRequired: documentData.isRequired || 0,
-      isCompleted: documentData.isCompleted || 0,
-      fileName: documentData.fileName || null,
-      fileSize: documentData.fileSize || null,
-      filePath: documentData.filePath || null,
-      mimeType: documentData.mimeType || null,
-      uploadedAt: documentData.isCompleted ? new Date() : null,
-      notes: documentData.notes || null,
-    };
-    this.documents.set(id, doc);
-    return doc;
-  }
-
-  async getPackage(id: number): Promise<PermitPackage | undefined> {
-    return this.packages.get(id);
-  }
-
   async getPackageWithDocuments(id: number): Promise<PackageWithDocuments | undefined> {
-    const pkg = this.packages.get(id);
+    const pkg = await this.getPackage(id);
     if (!pkg) return undefined;
 
-    const documents = Array.from(this.documents.values())
-      .filter(doc => doc.packageId === id);
-    
-    const completedDocuments = documents.filter(doc => doc.isCompleted === 1).length;
+    const documents = await this.getPackageDocuments(id);
     const totalDocuments = documents.length;
+    const completedDocuments = documents.filter(doc => doc.isCompleted).length;
     const progressPercentage = totalDocuments > 0 ? Math.round((completedDocuments / totalDocuments) * 100) : 0;
 
     return {
@@ -244,79 +185,78 @@ export class MemStorage implements IStorage {
   }
 
   async getAllPackages(): Promise<PackageWithDocuments[]> {
-    const packages = Array.from(this.packages.values());
+    const packages = await db.select().from(permitPackages).orderBy(desc(permitPackages.createdAt));
+    
     const packagesWithDocuments = await Promise.all(
       packages.map(async (pkg) => {
-        const result = await this.getPackageWithDocuments(pkg.id);
-        return result!;
+        const documents = await this.getPackageDocuments(pkg.id);
+        const totalDocuments = documents.length;
+        const completedDocuments = documents.filter(doc => doc.isCompleted).length;
+        const progressPercentage = totalDocuments > 0 ? Math.round((completedDocuments / totalDocuments) * 100) : 0;
+
+        return {
+          ...pkg,
+          documents,
+          completedDocuments,
+          totalDocuments,
+          progressPercentage,
+        };
       })
     );
-    
-    // Sort by creation date, newest first
-    return packagesWithDocuments.sort((a, b) => 
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+
+    return packagesWithDocuments;
   }
 
   async createPackage(packageData: InsertPermitPackage): Promise<PermitPackage> {
-    return this.createPackageSync(packageData);
+    const [pkg] = await db.insert(permitPackages).values(packageData).returning();
+    return pkg;
   }
 
   async updatePackage(id: number, updates: UpdatePermitPackage): Promise<PermitPackage | undefined> {
-    const pkg = this.packages.get(id);
-    if (!pkg) return undefined;
-
-    const updatedPackage: PermitPackage = {
-      ...pkg,
-      ...updates,
-      updatedAt: new Date(),
-      submittedAt: updates.status === PACKAGE_STATUSES.SUBMITTED ? new Date() : pkg.submittedAt,
-    };
-
-    this.packages.set(id, updatedPackage);
-    return updatedPackage;
+    const [pkg] = await db
+      .update(permitPackages)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(permitPackages.id, id))
+      .returning();
+    return pkg;
   }
 
   async deletePackage(id: number): Promise<boolean> {
-    const deleted = this.packages.delete(id);
-    if (deleted) {
-      // Also delete associated documents
-      const documents = Array.from(this.documents.entries())
-        .filter(([_, doc]) => doc.packageId === id);
-      documents.forEach(([docId]) => this.documents.delete(docId));
-    }
-    return deleted;
+    const result = await db.delete(permitPackages).where(eq(permitPackages.id, id));
+    return result.rowCount > 0;
   }
 
+  // Document operations
   async getPackageDocuments(packageId: number): Promise<PackageDocument[]> {
-    return Array.from(this.documents.values())
-      .filter(doc => doc.packageId === packageId);
+    return await db
+      .select()
+      .from(packageDocuments)
+      .where(eq(packageDocuments.packageId, packageId))
+      .orderBy(packageDocuments.documentName);
   }
 
   async getDocument(id: number): Promise<PackageDocument | undefined> {
-    return this.documents.get(id);
+    const [document] = await db.select().from(packageDocuments).where(eq(packageDocuments.id, id));
+    return document;
   }
 
   async createDocument(documentData: InsertDocument): Promise<PackageDocument> {
-    return this.createDocumentSync(documentData);
+    const [document] = await db.insert(packageDocuments).values(documentData).returning();
+    return document;
   }
 
   async updateDocument(id: number, updates: UpdateDocument): Promise<PackageDocument | undefined> {
-    const doc = this.documents.get(id);
-    if (!doc) return undefined;
-
-    const updatedDocument: PackageDocument = {
-      ...doc,
-      ...updates,
-      uploadedAt: updates.isCompleted === 1 ? new Date() : doc.uploadedAt,
-    };
-
-    this.documents.set(id, updatedDocument);
-    return updatedDocument;
+    const [document] = await db
+      .update(packageDocuments)
+      .set(updates)
+      .where(eq(packageDocuments.id, id))
+      .returning();
+    return document;
   }
 
   async deleteDocument(id: number): Promise<boolean> {
-    return this.documents.delete(id);
+    const result = await db.delete(packageDocuments).where(eq(packageDocuments.id, id));
+    return result.rowCount > 0;
   }
 
   async getPackageStats(): Promise<{
@@ -326,39 +266,20 @@ export class MemStorage implements IStorage {
     readyToSubmit: number;
     submitted: number;
   }> {
-    const packages = Array.from(this.packages.values());
-    
+    const totalResult = await db.select({ count: count() }).from(permitPackages);
+    const draftResult = await db.select({ count: count() }).from(permitPackages).where(eq(permitPackages.status, 'draft'));
+    const inProgressResult = await db.select({ count: count() }).from(permitPackages).where(eq(permitPackages.status, 'in_progress'));
+    const readyResult = await db.select({ count: count() }).from(permitPackages).where(eq(permitPackages.status, 'ready_to_submit'));
+    const submittedResult = await db.select({ count: count() }).from(permitPackages).where(eq(permitPackages.status, 'submitted'));
+
     return {
-      total: packages.length,
-      draft: packages.filter(p => p.status === PACKAGE_STATUSES.DRAFT).length,
-      inProgress: packages.filter(p => p.status === PACKAGE_STATUSES.IN_PROGRESS).length,
-      readyToSubmit: packages.filter(p => p.status === PACKAGE_STATUSES.READY_TO_SUBMIT).length,
-      submitted: packages.filter(p => p.status === PACKAGE_STATUSES.SUBMITTED).length,
+      total: totalResult[0]?.count || 0,
+      draft: draftResult[0]?.count || 0,
+      inProgress: inProgressResult[0]?.count || 0,
+      readyToSubmit: readyResult[0]?.count || 0,
+      submitted: submittedResult[0]?.count || 0,
     };
   }
 }
 
-import { DatabaseStorage } from "./database-storage";
-import { SimpleSQLiteStorage } from "./simple-sqlite-storage";
-
-// Dynamically choose storage based on database type
-function createStorage(): IStorage {
-  if (!process.env.DATABASE_URL) {
-    console.warn("No DATABASE_URL found, using in-memory storage");
-    return new MemStorage();
-  }
-  
-  const isPostgreSQL = process.env.DATABASE_URL.startsWith('postgresql://') || process.env.DATABASE_URL.startsWith('postgres://');
-  const isSQLite = process.env.DATABASE_URL.startsWith('file:') || process.env.DATABASE_URL.endsWith('.db');
-  
-  if (isPostgreSQL) {
-    return new DatabaseStorage();
-  } else if (isSQLite) {
-    return new SimpleSQLiteStorage();
-  } else {
-    console.warn("Unknown database type, using in-memory storage");
-    return new MemStorage();
-  }
-}
-
-export const storage = createStorage();
+export const storage = new DatabaseStorage();

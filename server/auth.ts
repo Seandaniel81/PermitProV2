@@ -87,11 +87,17 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
+  // Check if we should use local authentication instead of OIDC
+  if (process.env.FORCE_LOCAL_AUTH === 'true') {
+    console.log('FORCE_LOCAL_AUTH enabled - skipping OIDC setup entirely');
+    const { setupLocalAuth } = await import('./local-auth');
+    return setupLocalAuth(app);
+  }
+
   // Development bypass and fallback for OIDC issues
   const useDevBypass = config.auth.clientId === 'your-client-id' || 
                        config.auth.clientSecret === 'your-client-secret' ||
-                       process.env.USE_DEV_AUTH === 'true' ||
-                       process.env.FORCE_LOCAL_AUTH === 'true';
+                       process.env.USE_DEV_AUTH === 'true';
   
   if (useDevBypass) {
     console.warn("⚠️  LOCAL DEVELOPMENT MODE: Using secure local authentication");

@@ -18,6 +18,7 @@ export class SimpleSQLiteStorage implements IStorage {
 
   async getUserByEmail(email: string): Promise<any | undefined> {
     const [user] = await db.select().from(users).where(eq(users.email, email));
+    console.log('SimpleSQLiteStorage - Raw user from DB:', JSON.stringify(user, null, 2));
     return user || undefined;
   }
 

@@ -1,10 +1,18 @@
+// Use PostgreSQL configuration from environment
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL environment variable is required');
+}
+
 import 'dotenv/config';
+
+console.log('Using PostgreSQL database for production deployment');
+
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { seedDatabase } from "./seed-database";
 import { config } from "./config";
-import { setupAuth } from "./auth";
+import { setupDualAuth } from "./dual-auth";
 
 const app = express();
 app.use(express.json());
@@ -41,8 +49,16 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Seed database with initial data
-  await seedDatabase();
+  // Skip seeding for SQLite - admin user created manually
+  if (!process.env.DATABASE_URL?.includes('file:')) {
+    await seedDatabase();
+  } else {
+    console.log("Using SQLite with manual admin user setup");
+  }
+  
+  // Setup dual authentication (local + GitHub OAuth)
+  await setupDualAuth(app);
+  console.log('Configured dual authentication: local auth + GitHub OAuth');
   
   const server = await registerRoutes(app);
 

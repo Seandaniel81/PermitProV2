@@ -4,11 +4,8 @@ import * as schema from "../shared/sqlite-schema";
 import { mkdirSync } from "fs";
 import { dirname } from "path";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL must be set");
-}
-
-const dbPath = process.env.DATABASE_URL.replace('file:', '');
+// Force the database path to use our created database
+const dbPath = './permit_system.db';
 
 // Create directory if it doesn't exist
 const dbDir = dirname(dbPath);
