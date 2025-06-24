@@ -153,7 +153,9 @@ Role-based access control:
 4. Static assets copied to distribution folder
 
 ## Changelog
-- June 24, 2025: Production deployment fully working - fixed database schema issues and server startup
+- June 24, 2025: Converted to PostgreSQL + Apache + Bun with dual authentication (local + GitHub OAuth)
+- June 24, 2025: Restored full admin user management capabilities with proper CRUD operations
+- June 24, 2025: Fixed bcrypt dependency and database connection issues  
 - June 24, 2025: Production deployment working - server starts on port 3001 with SQLite authentication
 - June 23, 2025: Initial setup and development environment configured
 

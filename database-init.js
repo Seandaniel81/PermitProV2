@@ -1,7 +1,7 @@
 import { db } from './server/db.js';
 import { storage } from './server/storage.js';
 import { DEFAULT_SETTINGS } from './shared/schema.js';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 async function initializeDatabase() {
   try {
